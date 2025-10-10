@@ -1,8 +1,8 @@
 {
-  "name": "translations",
+  "name": "server",
   "version": "1.0.0",
   "main": "index.js",
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
@@ -10,10 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@avahq/wrtc": "^0.7.6-fixondata.1",
+    "dotenv": "^17.2.3",
     "ws": "^8.18.3"
-  },
-  "devDependencies": {
-    "node-pre-gyp": "^0.17.0"
   }
 }
