@@ -1,15 +1,4 @@
-import { Geist, Geist_Mono } from "next/font/google";
 import { useEffect, useRef, useState } from "react";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export default function Home() {
   const [userId, setUserId] = useState();
@@ -79,7 +68,7 @@ export default function Home() {
   useEffect(() => {
     const userId = Math.random().toString(36).substr(2, 5)
 
-    //@ts-ignore
+    // @ts-ignore
     setUserId(userId);
   }, []);
 
