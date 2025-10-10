@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3002;
 const { RTCPeerConnection, RTCSessionDescription, MediaStream } = require("@avahq/wrtc");
 
 const pcs = new Map();
-const SIGNALING_URL = process.env.SIGNALING_URL || "ws://localhost:3001";
+const SIGNALING_URL = process.env.SIGNALING_URL || "wss://videochat-poc.onrender.com";
 
 const signaling = new WebSocket(SIGNALING_URL);
 
