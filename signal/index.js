@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import { WebSocketServer } from "ws";
 dotenv.config();
 
-const port = 10000; //process.env.PORT || 3001;
+const port = process.env.PORT || 10000;
 console.log({port});
 
 const wss = new WebSocketServer({ port });
