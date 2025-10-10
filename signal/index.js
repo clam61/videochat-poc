@@ -1,16 +1,14 @@
 import dotenv from "dotenv";
-import http from "http";
 import { WebSocketServer } from "ws";
 dotenv.config();
 
-const server = http.createServer();
-
-const PORT = process.env.PORT || 3001;
+const port = process.env.PORT || 3001;
 console.log(process.env.PORT, 'process.env.PORT')
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ port });
 
 wss.on("connection", (ws) => {
+    console.log("On connection");
     ws.on("message", (msg) => {
         try {
             const data = JSON.parse(msg);
