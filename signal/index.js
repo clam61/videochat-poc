@@ -2,8 +2,8 @@ import dotenv from "dotenv";
 import { WebSocketServer } from "ws";
 dotenv.config();
 
-const port = process.env.PORT || 3001;
-console.log(process.env.PORT, 'process.env.PORT')
+const port = 10000; //process.env.PORT || 3001;
+console.log({port});
 
 const wss = new WebSocketServer({ port });
 
