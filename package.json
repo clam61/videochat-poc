@@ -1,0 +1,15 @@
+{
+  "name": "chat",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "install-client": "cd client && npm install",
+    "build-client": "cd client && npm run build",
+    "dev": "cd client && npm run dev",
+    "start-server": "node server/server.js",
+    "start": "npm run install-client && npm run build-client && npm run start-server"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
