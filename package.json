@@ -7,7 +7,8 @@
     "build-client": "cd client && npm run build",
     "dev": "cd client && npm run dev",
     "start-server": "node server/server.js",
-    "start": "npm run install-client && npm run build-client && npm run start-server"
+    "start": "npm run install-client && npm run build-client && npm run start-server",
+    "run": "npm run install-client && npm run build-client && npm run start-server"
   },
   "author": "",
   "license": "ISC",
