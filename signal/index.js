@@ -38,7 +38,3 @@ wss.on("connection", (ws) => {
 });
 
 const peers = new Map();
-
-server.listen(PORT, () => {
-    console.log(`Signaling server running on ws://localhost:${PORT}`);
-});
