@@ -1,10 +1,7 @@
-
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-
 export default function Home() {
-
   const [userId, setUserId] = useState<string>("");
   const [peerId, setPeerId] = useState<string>("");
   const [connected, setConnected] = useState(false);
@@ -23,12 +20,13 @@ export default function Home() {
     setUserId(id);
   }, []);
 
-
   useEffect(() => {
     if (!userId) return;
-    // wss://videochat-poc.onrender.com
-    // https://videochat-poc.onrender.com
-    ws.current = new WebSocket("ws://localhost:3001");
+
+    console.log(process.env.NEXT_PUBLIC_SIGNAL_SERVER);
+    ws.current = new WebSocket(
+      process.env.NEXT_PUBLIC_SIGNAL_SERVER || "ws://localhost:3001"
+    );
 
     ws.current.onopen = () => {
       console.log("✅ Connected to signaling server");
@@ -44,20 +42,21 @@ export default function Home() {
         await pcVideo.current?.setRemoteDescription({ type: "offer", sdp });
         const answer = await pcVideo.current?.createAnswer();
         await pcVideo.current?.setLocalDescription(answer!);
-        ws.current?.send(JSON.stringify({ type: "answer", sdp: answer?.sdp, from: userId, to: from }));
-      }
-
-
-      else if (type === "answer") {
+        ws.current?.send(
+          JSON.stringify({
+            type: "answer",
+            sdp: answer?.sdp,
+            from: userId,
+            to: from,
+          })
+        );
+      } else if (type === "answer") {
         if (from === "translation-server") {
           await pcAudio.current?.setRemoteDescription({ type: "answer", sdp });
         } else {
           await pcVideo.current?.setRemoteDescription({ type: "answer", sdp });
         }
-      }
-
-
-      else if (type === "ice-candidate") {
+      } else if (type === "ice-candidate") {
         if (from === "translation-server") {
           await pcAudio.current?.addIceCandidate(candidate);
         } else {
@@ -69,19 +68,22 @@ export default function Home() {
     return () => ws.current?.close();
   }, [userId]);
 
-
   useEffect(() => {
     if (!userId) return;
 
     const initMedia = async () => {
-      localStream.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localStream.current = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
       if (localVideo.current && localStream.current) {
         localVideo.current.srcObject = localStream.current;
       }
 
-
       pcVideo.current = new RTCPeerConnection();
-      localStream.current.getTracks().forEach((t) => pcVideo.current?.addTrack(t, localStream.current!));
+      localStream.current
+        .getTracks()
+        .forEach((t) => pcVideo.current?.addTrack(t, localStream.current!));
 
       pcVideo.current.ontrack = (e) => {
         if (remoteVideo.current) remoteVideo.current.srcObject = e.streams[0];
@@ -89,18 +91,23 @@ export default function Home() {
 
       pcVideo.current.onicecandidate = (e) => {
         if (e.candidate && peerId) {
-          ws.current?.send(JSON.stringify({
-            type: "ice-candidate",
-            candidate: e.candidate,
-            from: userId,
-            to: peerId,
-          }));
+          ws.current?.send(
+            JSON.stringify({
+              type: "ice-candidate",
+              candidate: e.candidate,
+              from: userId,
+              to: peerId,
+            })
+          );
         }
       };
 
-
       pcAudio.current = new RTCPeerConnection();
-      localStream.current.getAudioTracks().forEach((track) => pcAudio.current?.addTrack(track, localStream.current!));
+      localStream.current
+        .getAudioTracks()
+        .forEach((track) =>
+          pcAudio.current?.addTrack(track, localStream.current!)
+        );
 
       pcAudio.current.ontrack = (e) => {
         if (remoteAudio.current) remoteAudio.current.srcObject = e.streams[0];
@@ -122,27 +129,34 @@ export default function Home() {
           // @ts-ignore
           if (ws.current.readyState === WebSocket.OPEN) {
             // @ts-ignore
-            ws.current.send(JSON.stringify({
-              type: "ice-candidate",
-              candidate: e.candidate,
-              from: userId,
-              to: "translation-server",
-            }));
-          } else {
-            // @ts-ignore
-            ws.current.addEventListener("open", () => {
-              // @ts-ignore
-              ws.current.send(JSON.stringify({
+            ws.current.send(
+              JSON.stringify({
                 type: "ice-candidate",
                 candidate: e.candidate,
                 from: userId,
                 to: "translation-server",
-              }));
-            }, { once: true });
+              })
+            );
+          } else {
+            // @ts-ignore
+            ws.current.addEventListener(
+              "open",
+              () => {
+                // @ts-ignore
+                ws.current.send(
+                  JSON.stringify({
+                    type: "ice-candidate",
+                    candidate: e.candidate,
+                    from: userId,
+                    to: "translation-server",
+                  })
+                );
+              },
+              { once: true }
+            );
           }
         }
       };
-
 
       const offerAudio = await pcAudio.current.createOffer();
       await pcAudio.current.setLocalDescription(offerAudio);
@@ -163,18 +177,19 @@ export default function Home() {
         }
       };
 
-
-      sendWhenOpen(ws.current, JSON.stringify({
-        type: "offer",
-        sdp: offerAudio.sdp,
-        from: userId,
-        to: "translation-server",
-      }));
+      sendWhenOpen(
+        ws.current,
+        JSON.stringify({
+          type: "offer",
+          sdp: offerAudio.sdp,
+          from: userId,
+          to: "translation-server",
+        })
+      );
     };
 
     initMedia();
   }, [userId, peerId]);
-
 
   const callPeer = async () => {
     if (!peerId || !pcVideo.current) return;
@@ -185,14 +200,15 @@ export default function Home() {
     const offer = await pcVideo.current.createOffer();
     await pcVideo.current.setLocalDescription(offer);
 
-    ws.current?.send(JSON.stringify({
-      type: "offer",
-      sdp: offer.sdp,
-      from: userId,
-      to: peerId,
-    }));
+    ws.current?.send(
+      JSON.stringify({
+        type: "offer",
+        sdp: offer.sdp,
+        from: userId,
+        to: peerId,
+      })
+    );
   };
-
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -205,7 +221,9 @@ export default function Home() {
           onChange={(e) => setPeerId(e.target.value)}
           placeholder="Peer ID"
         />
-        <button onClick={callPeer} disabled={!peerId || connected}>Call</button>
+        <button onClick={callPeer} disabled={!peerId || connected}>
+          Call
+        </button>
       </div>
 
       <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
@@ -236,7 +254,9 @@ export default function Home() {
         <audio ref={remoteAudio} autoPlay controls />
       </div>
 
-      <p>Your ID: <b>{userId}</b></p>
+      <p>
+        Your ID: <b>{userId}</b>
+      </p>
     </div>
   );
 }

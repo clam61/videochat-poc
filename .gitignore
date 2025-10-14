@@ -1,1 +1,101 @@
+*.DS_Store
+
+# =========================================
+# Node.js Monorepo .gitignore
+# =========================================
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage reports
+coverage
+*.lcov
+
+# Dependency directories
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+.svelte-kit/
+.storybook-out/
+storybook-static/
+.vite/
+.cache/
+.temp/
+.tmp/
+.cdk.out/
+cdk.out/
+serverless/
+
+# TypeScript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE / Editor folders
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Yarn / pnpm
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+.pnpm-store/
+
+# Turbo / Nx / Lerna
+.turbo/
+nx-cache/
+lerna-debug.log
+
+# Lock files (optional — uncomment if managed centrally)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Testing
+jest-cache/
+jest-results.json
+test-results/
+coverage-final.json
+
+# Misc
+*.tgz
+*.orig
+*.rej
+
+# Local scripts / scratch
+scratch/
+local-dev/
+
