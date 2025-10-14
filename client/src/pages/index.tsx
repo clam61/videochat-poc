@@ -125,6 +125,7 @@ export default function Home() {
       // };
 
       pcAudio.current.onicecandidate = (e) => {
+        console.log("PC AUDIO ICE CANDIDATE", e);
         if (e.candidate) {
           // @ts-ignore
           if (ws.current.readyState === WebSocket.OPEN) {
@@ -158,6 +159,33 @@ export default function Home() {
         }
       };
 
+      // The offerAudio contains an SDP (Session Description) describing:
+      // * Audio/video codecs
+      // * Media capabilities
+      // A list of ICE candidates (possible addresses/ports to connect to)
+
+      /*
+      What an ICE candidate actually is
+      An ICE candidate is essentially:
+      (IP address, port, transport protocol, type)
+
+      Where:
+
+      IP address & port → a possible address your peer can reach you at
+      Transport protocol → usually UDP, sometimes TCP
+      Type → how the address was discovered:
+      host → your local LAN address
+      srflx → your public IP discovered via STUN server
+      relay → a TURN server relay address
+
+      Example (simplified):
+
+      {
+        "candidate": "candidate:842163049 1 udp 1677729535 192.168.1.5 52345 typ host",
+        "sdpMid": "0",
+        "sdpMLineIndex": 0
+      }
+      */
       const offerAudio = await pcAudio.current.createOffer();
       await pcAudio.current.setLocalDescription(offerAudio);
 
