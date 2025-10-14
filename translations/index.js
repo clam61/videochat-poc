@@ -9,6 +9,8 @@ const { RTCPeerConnection, RTCSessionDescription, MediaStream } = avahqWrtc;
 const pcs = new Map();
 
 const port = process.env.PORT || 10001;
+
+console.log({ port });
 const signaling = new WebSocketServer({ port });
 
 signaling.on("open", () => {
