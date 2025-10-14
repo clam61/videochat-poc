@@ -24,7 +24,7 @@ wss.on("connection", (ws) => {
           peers.set(from, ws);
           console.log(`Peer joined: ${from}`);
           for (const key of peers.keys()) {
-            console.log(key);
+            console.log("\t", key);
           }
           break;
         // when receiving these messages, find the target
@@ -34,7 +34,7 @@ wss.on("connection", (ws) => {
         case "ice-candidate":
           if (!to) return;
           const target = peers.get(to);
-          console.log("offer|answer|ice-candidate", target);
+
           if (target) target.send(JSON.stringify(data));
           break;
       }

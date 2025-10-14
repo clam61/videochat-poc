@@ -1,10 +1,6 @@
 import dotenv from "dotenv";
-// import * as http from "http";
 import { WebSocket } from "ws";
 import avahqWrtc from "@avahq/wrtc"; // Node.js WebRTC implementation
-
-// Create a basic HTTP server (needed by some WebRTC libraries, but not strictly used for requests here)
-// const server = http.createServer();
 
 dotenv.config(); // Load environment variables from .env file
 
@@ -19,106 +15,151 @@ const signalWssUrl = process.env.SIGNAL_SERVER;
 if (!signalWssUrl) {
   throw Error("Set env SIGNAL_SERVER");
 }
-console.log(signalWssUrl);
 
-// Connect to the signaling server via WebSocket
-// This server is used only for exchanging SDP and ICE candidates — not for the audio itself
-const signaling = new WebSocket(signalWssUrl);
+console.log(`Signaling server: ${signalWssUrl}`);
 
-// When connection to signaling server is open, announce ourselves as the translation server
-signaling.on("open", () => {
-  const joinMessage = JSON.stringify({
-    type: "join",
-    from: "translation-server", // our ID used by signaling server to route messages
+// --- Connection state tracking variables ---
+let signaling; // WebSocket connection instance
+let reconnectAttempts = 0; // Number of times we've tried to reconnect
+let reconnectTimeout = null; // Used to prevent multiple simultaneous reconnect attempts
+
+/**
+ * Connects to the signaling server via WebSocket.
+ * If the connection drops, automatically attempts to reconnect with exponential backoff.
+ */
+const connectSignaling = () => {
+  signaling = new WebSocket(signalWssUrl);
+
+  // When connection to signaling server is open, announce ourselves as the translation server
+  signaling.on("open", () => {
+    reconnectAttempts = 0; // Reset reconnection counter after success
+
+    const joinMessage = JSON.stringify({
+      type: "join",
+      from: "translation-server", // our ID used by signaling server to route messages
+    });
+
+    signaling.send(joinMessage);
+    console.log(
+      "✅ Translation server connected to signaling server",
+      joinMessage
+    );
   });
-  signaling.send(joinMessage);
-  console.log("Translation server connected to signaling server", joinMessage);
-});
 
-// Handle messages from the signaling server (offers, ICE candidates, etc.)
-signaling.on("message", async (msg) => {
-  console.log("On message", msg.toString());
-  const data = JSON.parse(msg);
-  const { type, from, sdp, candidate } = data;
+  // Handle messages from the signaling server (offers, ICE candidates, etc.)
+  signaling.on("message", async (msg) => {
+    console.log("On message", msg.toString());
+    const data = JSON.parse(msg);
+    const { type, from, sdp, candidate } = data;
 
-  // If a client wants to start a WebRTC connection, they send an "offer"
-  if (type === "offer") {
-    console.log(`Received offer from ${from}`);
+    // If a client wants to start a WebRTC connection, they send an "offer"
+    if (type === "offer") {
+      console.log(`Received offer from ${from}`);
 
-    // Create a new peer connection for this client
-    const pc = new RTCPeerConnection();
+      // Create a new peer connection for this client
+      const pc = new RTCPeerConnection();
 
-    // Store it in the map so we can reference it later (e.g., for ICE candidates)
-    pcs.set(from, pc);
+      // Store it in the map so we can reference it later (e.g., for ICE candidates)
+      pcs.set(from, pc);
 
-    // Create a new MediaStream for sending audio back to the client
-    const outgoingStream = new MediaStream();
+      // Create a new MediaStream for sending audio back to the client
+      const outgoingStream = new MediaStream();
 
-    // When the client sends us audio tracks, this event fires
-    pc.ontrack = (event) => {
-      const incomingStream = event.streams[0];
-      console.log(`Received audio track from ${from}`);
+      // When the client sends us audio tracks, this event fires
+      pc.ontrack = (event) => {
+        const incomingStream = event.streams[0];
+        console.log(`Received audio track from ${from}`);
 
-      // Forward each incoming audio track into our outgoing stream
-      // (This is where you could do audio processing/translation)
-      incomingStream.getAudioTracks().forEach((track) => {
-        outgoingStream.addTrack(track);
-      });
+        // Forward each incoming audio track into our outgoing stream
+        // (This is where you could do audio processing/translation)
+        incomingStream.getAudioTracks().forEach((track) => {
+          outgoingStream.addTrack(track);
+        });
 
-      // Add all outgoing tracks to the peer connection so the client can hear them
-      outgoingStream
-        .getTracks()
-        .forEach((track) => pc.addTrack(track, outgoingStream));
-    };
+        // Add all outgoing tracks to the peer connection so the client can hear them
+        outgoingStream
+          .getTracks()
+          .forEach((track) => pc.addTrack(track, outgoingStream));
+      };
 
-    // When this peer connection generates ICE candidates (network info)
-    pc.onicecandidate = (e) => {
-      if (e.candidate) {
-        // Send ICE candidates back to the client via signaling server
-        signaling.send(
-          JSON.stringify({
-            type: "ice-candidate",
-            candidate: e.candidate,
-            from: "translation-server",
-            to: from, // send to the correct client
-          })
-        );
-      }
-    };
+      // When this peer connection generates ICE candidates (network info)
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          // Send ICE candidates back to the client via signaling server
+          signaling.send(
+            JSON.stringify({
+              type: "ice-candidate",
+              candidate: e.candidate,
+              from: "translation-server",
+              to: from, // send to the correct client
+            })
+          );
+        }
+      };
 
-    // Set the remote description using the client's offer
-    // This tells WebRTC what the client wants to send/receive
-    await pc.setRemoteDescription(
-      new RTCSessionDescription({ type: "offer", sdp })
-    );
+      // Set the remote description using the client's offer
+      // This tells WebRTC what the client wants to send/receive
+      await pc.setRemoteDescription(
+        new RTCSessionDescription({ type: "offer", sdp })
+      );
 
-    // Create our answer SDP (describes what the translation server can send/receive)
-    const answer = await pc.createAnswer();
+      // Create our answer SDP (describes what the translation server can send/receive)
+      const answer = await pc.createAnswer();
 
-    // Set the answer as our local description (required before sending it back)
-    await pc.setLocalDescription(answer);
+      // Set the answer as our local description (required before sending it back)
+      await pc.setLocalDescription(answer);
 
-    // Send the SDP answer back to the client via signaling server
-    signaling.send(
-      JSON.stringify({
-        type: "answer",
-        sdp: answer.sdp,
-        from: "translation-server",
-        to: from,
-      })
-    );
-    console.log(`Sent answer to ${from}`);
-  } else if (type === "ice-candidate") {
+      // Send the SDP answer back to the client via signaling server
+      signaling.send(
+        JSON.stringify({
+          type: "answer",
+          sdp: answer.sdp,
+          from: "translation-server",
+          to: from,
+        })
+      );
+      console.log(`Sent answer to ${from}`);
+    }
+
     // If the client sends us an ICE candidate, add it to the peer connection
-    const pc = pcs.get(from);
-    if (pc && candidate) pc.addIceCandidate(candidate);
-  }
-});
+    else if (type === "ice-candidate") {
+      const pc = pcs.get(from);
+      if (pc && candidate) pc.addIceCandidate(candidate);
+    }
+  });
 
-// Start the HTTP server (not strictly used for WebRTC, but required by Node libraries sometimes)
-// const port = process.env.PORT || 10000;
-// server.listen(port, () => {
-//   console.log(
-//     `Translation server running on http server on http://localhost:${port}`
-//   );
-// });
+  // If the signaling connection closes unexpectedly, attempt to reconnect
+  signaling.on("close", () => {
+    console.warn("⚠️ Signaling connection closed. Attempting to reconnect...");
+    scheduleReconnect();
+  });
+
+  // Handle signaling connection errors
+  signaling.on("error", (err) => {
+    console.error("❌ Signaling error:", err.message);
+    signaling.close(); // Trigger close event to handle reconnect logic
+  });
+};
+
+/**
+ * Schedules a reconnection attempt using exponential backoff.
+ * Example delays: 1s, 2s, 4s, 8s, 16s, up to 30s max.
+ */
+const scheduleReconnect = () => {
+  // Avoid duplicate reconnect timers
+  if (reconnectTimeout) return;
+
+  // Exponential backoff delay, capped at 30 seconds
+  const delay = Math.min(30000, 1000 * 2 ** reconnectAttempts);
+  console.log(`⏳ Reconnecting in ${delay / 1000}s...`);
+
+  // Schedule reconnect attempt
+  reconnectTimeout = setTimeout(() => {
+    reconnectTimeout = null; // Reset timer
+    reconnectAttempts += 1; // Increase backoff
+    connectSignaling(); // Try reconnecting
+  }, delay);
+};
+
+// Start the initial connection
+connectSignaling();
