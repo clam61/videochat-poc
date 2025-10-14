@@ -9,8 +9,10 @@ const wss = new WebSocketServer({ port });
 
 wss.on("connection", (ws) => {
   console.log("On connection");
-  ws.on("message", (msg) => {
-    console.log("Received message", msg);
+  ws.on("message", (messageString) => {
+    const msg = messageString.toString("utf8");
+    console.log("Received message as string", msg);
+
     try {
       const data = JSON.parse(msg);
       const { type, from, to } = data;
@@ -28,7 +30,9 @@ wss.on("connection", (ws) => {
           if (target) target.send(JSON.stringify(data));
           break;
       }
-    } catch {}
+    } catch (e) {
+      console.error(e);
+    }
   });
 
   ws.on("close", () => {
