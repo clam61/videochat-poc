@@ -1,6 +1,9 @@
 import dotenv from "dotenv";
-import { WebSocketServer } from "ws";
+import * as http from "http";
+import { WebSocket } from "ws";
 import avahqWrtc from "@avahq/wrtc";
+
+const server = http.createServer();
 
 dotenv.config();
 
@@ -8,10 +11,13 @@ const { RTCPeerConnection, RTCSessionDescription, MediaStream } = avahqWrtc;
 
 const pcs = new Map();
 
-const port = process.env.PORT || 10001;
+const signalWssUrl = process.env.SIGNAL_SERVER;
 
-console.log({ port });
-const signaling = new WebSocketServer({ port });
+if (!signalWssUrl) {
+  throw Error("Set env SIGNAL_SERVER");
+}
+console.log(signalWssUrl);
+const signaling = new WebSocket(signalWssUrl);
 
 signaling.on("open", () => {
   const joinMessage = JSON.stringify({
@@ -82,4 +88,11 @@ signaling.on("message", async (msg) => {
     const pc = pcs.get(from);
     if (pc && candidate) pc.addIceCandidate(candidate);
   }
+});
+
+const port = process.env.PORT || 10000;
+server.listen(port, () => {
+  console.log(
+    `Translation server running on http server on http://localhost:${port}`
+  );
 });

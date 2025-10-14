@@ -21,8 +21,8 @@ wss.on("connection", (ws) => {
         case "join":
           peers.set(from, ws);
           console.log(`Peer joined: ${from}`);
-          for (const [key, value] of peers) {
-            console.log(key, value);
+          for (const key of myMap.keys()) {
+            console.log(key);
           }
           break;
         case "offer":
