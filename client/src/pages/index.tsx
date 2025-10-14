@@ -55,6 +55,7 @@ export default function Home() {
         );
       } else if (type === "answer") {
         if (from === "translation-server") {
+          console.log("Connect to translation server", sdp);
           await pcAudio.current?.setRemoteDescription({ type: "answer", sdp });
         } else {
           await pcVideo.current?.setRemoteDescription({ type: "answer", sdp });
@@ -219,11 +220,11 @@ export default function Home() {
       // @ts-ignore
       const sendWhenOpen = (ws, msg) => {
         if (ws.readyState === WebSocket.OPEN) {
-          console.log(msg);
+          console.log("Send already open", msg);
           ws.send(msg);
         } else {
           ws.addEventListener("open", () => {
-            console.log(msg);
+            console.log("Send on listener", msg);
             ws.send(msg), { once: true };
           });
         }

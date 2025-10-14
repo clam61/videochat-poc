@@ -18,13 +18,16 @@ wss.on("connection", (ws) => {
       const { type, from, to } = data;
 
       switch (type) {
+        // when receiving a join message, add the user to the peers map
         case "join":
           peers.set(from, ws);
           console.log(`Peer joined: ${from}`);
-          for (const key of myMap.keys()) {
+          for (const key of peers.keys()) {
             console.log(key);
           }
           break;
+        // when receiving these messages, find the target
+        // if the target exists forward the message
         case "offer":
         case "answer":
         case "ice-candidate":
