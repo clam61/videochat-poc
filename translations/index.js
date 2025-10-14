@@ -1,20 +1,15 @@
-const http = require("http");
-const { WebSocket } = require("ws");
+import dotenv from "dotenv";
+import { WebSocketServer } from "ws";
+import avahqWrtc from "@avahq/wrtc";
 
-const server = http.createServer();
-const PORT = process.env.PORT || 3002;
+dotenv.config();
 
-const {
-  RTCPeerConnection,
-  RTCSessionDescription,
-  MediaStream,
-} = require("@avahq/wrtc");
+const { RTCPeerConnection, RTCSessionDescription, MediaStream } = avahqWrtc;
 
 const pcs = new Map();
-const SIGNALING_URL =
-  process.env.SIGNALING_URL || "wss://videochat-poc.onrender.com";
 
-const signaling = new WebSocket(SIGNALING_URL);
+const port = process.env.PORT || 10001;
+const signaling = new WebSocketServer({ port });
 
 signaling.on("open", () => {
   const joinMessage = JSON.stringify({
@@ -85,8 +80,4 @@ signaling.on("message", async (msg) => {
     const pc = pcs.get(from);
     if (pc && candidate) pc.addIceCandidate(candidate);
   }
-});
-
-server.listen(PORT, () => {
-  console.log(`Translation server running on ws://localhost:${PORT}`);
 });
