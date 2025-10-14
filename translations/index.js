@@ -1,10 +1,10 @@
 import dotenv from "dotenv";
-import * as http from "http";
+// import * as http from "http";
 import { WebSocket } from "ws";
 import avahqWrtc from "@avahq/wrtc"; // Node.js WebRTC implementation
 
 // Create a basic HTTP server (needed by some WebRTC libraries, but not strictly used for requests here)
-const server = http.createServer();
+// const server = http.createServer();
 
 dotenv.config(); // Load environment variables from .env file
 
@@ -116,9 +116,9 @@ signaling.on("message", async (msg) => {
 });
 
 // Start the HTTP server (not strictly used for WebRTC, but required by Node libraries sometimes)
-const port = process.env.PORT || 10000;
-server.listen(port, () => {
-  console.log(
-    `Translation server running on http server on http://localhost:${port}`
-  );
-});
+// const port = process.env.PORT || 10000;
+// server.listen(port, () => {
+//   console.log(
+//     `Translation server running on http server on http://localhost:${port}`
+//   );
+// });
