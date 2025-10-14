@@ -6,6 +6,7 @@ const port = process.env.PORT || 10000;
 console.log({ port });
 
 const wss = new WebSocketServer({ port });
+const peers = new Map();
 
 wss.on("connection", (ws) => {
   console.log("On connection");
@@ -48,5 +49,3 @@ wss.on("connection", (ws) => {
     }
   });
 });
-
-const peers = new Map();
