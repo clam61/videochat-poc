@@ -21,12 +21,16 @@ wss.on("connection", (ws) => {
         case "join":
           peers.set(from, ws);
           console.log(`Peer joined: ${from}`);
+          for (const [key, value] of peers) {
+            console.log(key, value);
+          }
           break;
         case "offer":
         case "answer":
         case "ice-candidate":
           if (!to) return;
           const target = peers.get(to);
+          console.log("offer|answer|ice-candidate", target);
           if (target) target.send(JSON.stringify(data));
           break;
       }

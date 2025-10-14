@@ -29,7 +29,10 @@ export default function Home() {
     );
 
     ws.current.onopen = () => {
-      console.log("✅ Connected to signaling server");
+      console.log(
+        "✅ Connected to signaling server, sending:",
+        JSON.stringify({ type: "join", from: userId })
+      );
       ws.current?.send(JSON.stringify({ type: "join", from: userId }));
     };
 
@@ -125,10 +128,18 @@ export default function Home() {
       // };
 
       pcAudio.current.onicecandidate = (e) => {
-        console.log("PC AUDIO ICE CANDIDATE", e);
         if (e.candidate) {
           // @ts-ignore
           if (ws.current.readyState === WebSocket.OPEN) {
+            console.log(
+              "Sending to already open ws",
+              JSON.stringify({
+                type: "ice-candidate",
+                candidate: e.candidate,
+                from: userId,
+                to: "translation-server",
+              })
+            );
             // @ts-ignore
             ws.current.send(
               JSON.stringify({
@@ -143,6 +154,15 @@ export default function Home() {
             ws.current.addEventListener(
               "open",
               () => {
+                console.log(
+                  "Sending to ws on listener",
+                  JSON.stringify({
+                    type: "ice-candidate",
+                    candidate: e.candidate,
+                    from: userId,
+                    to: "translation-server",
+                  })
+                );
                 // @ts-ignore
                 ws.current.send(
                   JSON.stringify({
@@ -199,9 +219,13 @@ export default function Home() {
       // @ts-ignore
       const sendWhenOpen = (ws, msg) => {
         if (ws.readyState === WebSocket.OPEN) {
+          console.log(msg);
           ws.send(msg);
         } else {
-          ws.addEventListener("open", () => ws.send(msg), { once: true });
+          ws.addEventListener("open", () => {
+            console.log(msg);
+            ws.send(msg), { once: true };
+          });
         }
       };
 
