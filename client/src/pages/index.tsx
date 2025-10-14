@@ -57,6 +57,12 @@ export default function Home() {
         if (from === "translation-server") {
           console.log("Connect to translation server", sdp);
           await pcAudio.current?.setRemoteDescription({ type: "answer", sdp });
+
+          // ✅ Now that the connection is established, disconnect from signaling
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            console.log("Disconnecting from signaling server");
+            ws.current.close();
+          }
         } else {
           await pcVideo.current?.setRemoteDescription({ type: "answer", sdp });
         }
