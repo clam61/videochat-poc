@@ -20,7 +20,11 @@ const { RTCPeerConnection, RTCSessionDescription, MediaStream } = avahqWrtc;
 const pcs = new Map();
 
 // Map to store language ; key = client ID, value = language of the incoming audio
+/// TODO lang map would continue to grow indefinitely
 const languages = new Map();
+
+/// TODO lang map would continue to grow indefinitely
+const connections = new Map();
 
 // Get the signaling server URL from environment variables
 const signalWssUrl = process.env.SIGNAL_SERVER;
@@ -65,7 +69,6 @@ const connectSignaling = () => {
     const { type, from, sdp, candidate, lang } = data;
 
     // set the language in a map if it exists
-    /// TODO lang map would continue to grow indefinitely
     if (lang) {
       languages.set(from, lang);
 
@@ -74,8 +77,14 @@ const connectSignaling = () => {
       }
     }
 
+    // if a client accepts a WebRTC connection, they send an "answer"
+    if (type === "answer") {
+      // add connections for fast querying
+      connections.set(from, to);
+      connections.set(to, from);
+    }
     // If a client wants to start a WebRTC connection, they send an "offer"
-    if (type === "offer") {
+    else if (type === "offer") {
       console.log(`Received offer from ${from}`);
 
       // Create a new peer connection for this client
@@ -98,10 +107,21 @@ const connectSignaling = () => {
           outgoingStream.addTrack(track);
         });
 
-        // Add all outgoing tracks to the peer connection so the client can hear them
-        outgoingStream
-          .getTracks()
-          .forEach((track) => pc.addTrack(track, outgoingStream));
+        // get the peer this user is connected to
+        const pc2 = pcs.get(connections.get(from));
+
+        // no peer connection then return
+        if (!pc2) return;
+
+        // encode audio to pcm
+        // stream audio to speech to text
+        // translate text to text
+        // create text to speech audio
+        // add audio to pc2 peer connection so the other client can hear them
+
+        // outgoingStream
+        //   .getTracks()
+        //   .forEach((track) => pc2.addTrack(track, outgoingStream));
       };
 
       // When this peer connection generates ICE candidates (network info)
@@ -142,7 +162,6 @@ const connectSignaling = () => {
       );
       console.log(`Sent answer to ${from}`);
     }
-
     // If the client sends us an ICE candidate, add it to the peer connection
     else if (type === "ice-candidate") {
       const pc = pcs.get(from);

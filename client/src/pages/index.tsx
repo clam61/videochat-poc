@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { v7 } from "uuid";
 
 export default function Home() {
   const [userId, setUserId] = useState<string>("");
@@ -22,8 +23,7 @@ export default function Home() {
 
   // Generate random user ID
   useEffect(() => {
-    const id = Math.random().toString(36).substr(2, 5);
-    setUserId(id);
+    setUserId(v7());
   }, []);
 
   // Connect to signaling server
@@ -209,6 +209,7 @@ export default function Home() {
         sdp: offer.sdp,
         from: userId,
         to: peerId,
+        lang: selectedLanguage,
       })
     );
   };
@@ -228,14 +229,22 @@ export default function Home() {
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <h1>🎥 P2P Video + 🎧 Translation Hybrid</h1>
 
-      <div>
+      <div className="flex gap-4 items-center">
+        <label>
+          My user ID: <code>{userId}</code>
+        </label>
         <label>Enter peer ID: </label>
         <input
+          className="border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           value={peerId}
           onChange={(e) => setPeerId(e.target.value)}
           placeholder="Peer ID"
         />
-        <button onClick={callPeer} disabled={!peerId || connected}>
+        <button
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          onClick={callPeer}
+          disabled={!peerId || connected}
+        >
           Call
         </button>
       </div>
