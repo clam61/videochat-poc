@@ -46,7 +46,9 @@ export default function Home() {
         await pcVideo.current?.setRemoteDescription({ type: "offer", sdp });
         const answer = await pcVideo.current?.createAnswer();
         await pcVideo.current?.setLocalDescription(answer!);
-        ws.current?.send(JSON.stringify({ type: "answer", sdp: answer?.sdp, from: userId, to: from }));
+        ws.current?.send(JSON.stringify({
+          type: "answer", sdp: answer?.sdp, from: userId, to: from, language: "wewewew",
+        }));
       } else if (type === "answer") {
         if (from === "translation-server") {
           // 🎤 Translation server answer
@@ -95,7 +97,9 @@ export default function Home() {
             type: "ice-candidate",
             candidate: e.candidate,
             from: userId,
-            to: peerId
+            to: peerId,
+            language: 'fffff',
+
           }));
         }
       };
@@ -132,13 +136,14 @@ export default function Home() {
             type: "ice-candidate",
             candidate: e.candidate,
             from: userId,
-            to: "translation-server"
+            to: "translation-server",
+            language: 'aaaa'
           }));
         }
       };
 
       // Create audio offer only if translation is active
-      if (isTranslationActive) {
+      if (isTranslationActive && pcAudio.current) {
         const offerAudio = await pcAudio.current.createOffer();
         await pcAudio.current.setLocalDescription(offerAudio);
 
@@ -152,7 +157,8 @@ export default function Home() {
           type: "offer",
           sdp: offerAudio.sdp,
           from: userId,
-          to: "translation-server"
+          to: "translation-server",
+          language: 'en-US'
         }));
       }
     };
@@ -170,7 +176,9 @@ export default function Home() {
     const offer = await pcVideo.current.createOffer();
     await pcVideo.current.setLocalDescription(offer);
 
-    ws.current?.send(JSON.stringify({ type: "offer", sdp: offer.sdp, from: userId, to: peerId }));
+    ws.current?.send(JSON.stringify({
+      type: "offer", sdp: offer.sdp, from: userId, to: peerId, language: 'es-MX',
+    }));
   };
 
   // --- Language dropdown ---
