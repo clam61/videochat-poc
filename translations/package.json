@@ -11,6 +11,7 @@
   "description": "",
   "dependencies": {
     "@avahq/wrtc": "^0.7.6-fixondata.1",
+    "@aws-sdk/client-transcribe": "^3.910.0",
     "dotenv": "^17.2.3",
     "ws": "^8.18.3"
   },

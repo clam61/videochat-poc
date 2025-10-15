@@ -5,10 +5,11 @@ export default function Home() {
   const [userId, setUserId] = useState<string>("");
   const [peerId, setPeerId] = useState<string>("");
   const [connected, setConnected] = useState(false);
-  const [isTranslationActive, setIsTranslationActive] = useState<boolean>(false);
-  const [selectedLanguage, setSelectedLanguage] = useState<
-    { type: "none" } | { type: "source"; language: "es-MX" | "en-US" }
-  >({ type: "none" });
+  const [isTranslationActive, setIsTranslationActive] =
+    useState<boolean>(false);
+
+  type Language = "es-MX" | "en-US" | "none";
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>();
 
   const ws = useRef<WebSocket | null>(null);
   const pcVideo = useRef<RTCPeerConnection | null>(null);
@@ -18,8 +19,6 @@ export default function Home() {
   const localVideo = useRef<HTMLVideoElement | null>(null);
   const remoteVideo = useRef<HTMLVideoElement | null>(null);
   const remoteAudio = useRef<HTMLAudioElement | null>(null);
-
-  const dropDownRef = useRef<HTMLDivElement | null>(null);
 
   // Generate random user ID
   useEffect(() => {
@@ -31,7 +30,9 @@ export default function Home() {
   useEffect(() => {
     if (!userId) return;
 
-    ws.current = new WebSocket(process.env.NEXT_PUBLIC_SIGNAL_SERVER || "ws://localhost:3001");
+    ws.current = new WebSocket(
+      process.env.NEXT_PUBLIC_SIGNAL_SERVER || "ws://localhost:3001"
+    );
 
     ws.current.onopen = () => {
       // ✅ Connected to signaling server, sending join message
@@ -54,7 +55,7 @@ export default function Home() {
             sdp: answer?.sdp,
             from: userId,
             to: from,
-            language: "wewewew",
+            lang: selectedLanguage,
           })
         );
       } else if (type === "answer") {
@@ -86,7 +87,10 @@ export default function Home() {
 
     const initMedia = async () => {
       // Get local video/audio stream
-      localStream.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localStream.current = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
       if (localVideo.current && localStream.current)
         localVideo.current.srcObject = localStream.current;
 
@@ -112,7 +116,6 @@ export default function Home() {
               candidate: e.candidate,
               from: userId,
               to: peerId,
-              language: "spanish",
             })
           );
         }
@@ -149,14 +152,16 @@ export default function Home() {
         relay → a TURN server relay address
         */
         if (ws.current.readyState === WebSocket.OPEN) {
-          console.log("Sending ICE candidate to translation server", e.candidate);
+          console.log(
+            "Sending ICE candidate to translation server",
+            e.candidate
+          );
           ws.current.send(
             JSON.stringify({
               type: "ice-candidate",
               candidate: e.candidate,
               from: userId,
               to: "translation-server",
-              language: "french",
             })
           );
         }
@@ -179,7 +184,7 @@ export default function Home() {
             sdp: offerAudio.sdp,
             from: userId,
             to: "translation-server",
-            language: "english",
+            lang: selectedLanguage,
           })
         );
       }
@@ -204,22 +209,20 @@ export default function Home() {
         sdp: offer.sdp,
         from: userId,
         to: peerId,
-        language: "mexican",
       })
     );
   };
 
-  // --- Language dropdown ---
-  const toggleDropdown = () => {
-    if (dropDownRef.current)
-      dropDownRef.current.style.display =
-        dropDownRef.current.style.display === "block" ? "none" : "block";
-  };
-
-  const handleLanguageSelection = (language: "es-MX" | "en-US") => {
-    setSelectedLanguage({ type: "source", language });
-    toggleDropdown();
-  };
+  useEffect(() => {
+    ws.current?.send(
+      JSON.stringify({
+        type: "lang",
+        from: userId,
+        to: "translation-server",
+        lang: selectedLanguage,
+      })
+    );
+  }, [selectedLanguage]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -227,7 +230,11 @@ export default function Home() {
 
       <div>
         <label>Enter peer ID: </label>
-        <input value={peerId} onChange={(e) => setPeerId(e.target.value)} placeholder="Peer ID" />
+        <input
+          value={peerId}
+          onChange={(e) => setPeerId(e.target.value)}
+          placeholder="Peer ID"
+        />
         <button onClick={callPeer} disabled={!peerId || connected}>
           Call
         </button>
@@ -256,36 +263,19 @@ export default function Home() {
       </div>
 
       <div className="flex gap-2">
-        <div className="relative inline-block text-left">
-          <div>
-            <button
-              onClick={toggleDropdown}
-              className="inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              {selectedLanguage.type === "none" ? "Languages" : selectedLanguage.language}
-            </button>
-          </div>
-          <div
-            ref={dropDownRef}
-            className="absolute left-0 z-10 mt-2 w-32 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5"
-            style={{ display: "none" }}
-          >
-            <div className="py-1">
-              <button
-                onClick={() => handleLanguageSelection("en-US")}
-                className="block px-4 py-2 w-full text-sm text-gray-700 hover:bg-gray-100"
-              >
-                en-US
-              </button>
-              <button
-                onClick={() => handleLanguageSelection("es-MX")}
-                className="block px-4 py-2 w-full text-sm text-gray-700 hover:bg-gray-100"
-              >
-                es-MX
-              </button>
-            </div>
-          </div>
-        </div>
+        <select
+          className="border border-gray-300 bg-white text-gray-900 px-3 py-2 rounded-md appearance-none"
+          value={selectedLanguage}
+          onChange={(e) =>
+            setSelectedLanguage(
+              e.target.options[e.target.selectedIndex].value as Language
+            )
+          }
+        >
+          <option value="none">Language</option>
+          <option value="en-US">en-US</option>
+          <option value="en-MX">es-MX</option>
+        </select>
 
         <button
           onClick={() => setIsTranslationActive(!isTranslationActive)}

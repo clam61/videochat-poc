@@ -1,6 +1,15 @@
 import dotenv from "dotenv";
 import { WebSocket } from "ws";
 import avahqWrtc from "@avahq/wrtc"; // Node.js WebRTC implementation
+import { TranscribeClient } from "@aws-sdk/client-transcribe";
+
+const client = new TranscribeClient({
+  region: "us-east-1",
+  credentials: {
+    accessKeyId: "YOUR_ACCESS_KEY_ID",
+    secretAccessKey: "YOUR_SECRET_ACCESS_KEY",
+  },
+});
 
 dotenv.config(); // Load environment variables from .env file
 
@@ -9,6 +18,9 @@ const { RTCPeerConnection, RTCSessionDescription, MediaStream } = avahqWrtc;
 
 // Map to store active peer connections; key = client ID, value = RTCPeerConnection instance
 const pcs = new Map();
+
+// Map to store language ; key = client ID, value = language of the incoming audio
+const languages = new Map();
 
 // Get the signaling server URL from environment variables
 const signalWssUrl = process.env.SIGNAL_SERVER;
@@ -50,7 +62,17 @@ const connectSignaling = () => {
   signaling.on("message", async (msg) => {
     console.log("On message", msg.toString());
     const data = JSON.parse(msg);
-    const { type, from, sdp, candidate } = data;
+    const { type, from, sdp, candidate, lang } = data;
+
+    // set the language in a map if it exists
+    /// TODO lang map would continue to grow indefinitely
+    if (lang) {
+      languages.set(from, lang);
+
+      for (const [key, value] of languages) {
+        console.log("\t", key, "-", value);
+      }
+    }
 
     // If a client wants to start a WebRTC connection, they send an "offer"
     if (type === "offer") {
@@ -131,6 +153,7 @@ const connectSignaling = () => {
   // If the signaling connection closes unexpectedly, attempt to reconnect
   signaling.on("close", () => {
     console.warn("⚠️ Signaling connection closed. Attempting to reconnect...");
+
     scheduleReconnect();
   });
 
