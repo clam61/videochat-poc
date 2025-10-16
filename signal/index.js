@@ -20,11 +20,29 @@ wss.on("connection", (ws) => {
 
       switch (type) {
         // when receiving a join message, add the user to the peers map
+        // case "join":
+        //   peers.set(from, ws);
+        //   console.log(`Peer joined: ${from}`);
+        //   for (const key of peers.keys()) {
+        //     console.log("\t", key);
+        //   }
+        //   break;
+
         case "join":
           peers.set(from, ws);
           console.log(`Peer joined: ${from}`);
-          for (const key of peers.keys()) {
-            console.log("\t", key);
+          // If there is already another client, we create a pair.
+          const otherPeers = Array.from(peers.keys()).filter((id) => id !== from);
+          if (otherPeers.length > 0) {
+            const pairMessage = JSON.stringify({
+              type: "pair",
+              a: from,
+              b: otherPeers[0], // take the first other customer
+            });
+
+            // Sending message to translation server
+            const translationServer = peers.get("translation-server");
+            if (translationServer) translationServer.send(pairMessage);
           }
           break;
 

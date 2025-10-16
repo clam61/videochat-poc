@@ -25,23 +25,19 @@ import fs from "fs";
 // Create a writable stream
 const file = fs.createWriteStream("test.raw");
 
-import dotenv from "dotenv";
-import { WebSocket } from "ws";
 import avahqWrtc from "@avahq/wrtc"; // Node.js WebRTC implementation
-import {
-  TranscribeStreamingClient,
-  StartStreamTranscriptionCommand,
-} from "@aws-sdk/client-transcribe-streaming";
-import { PassThrough } from "stream";
-import {
-  TranslateClient,
-  TranslateTextCommand,
-} from "@aws-sdk/client-translate";
 import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
+import {
+  StartStreamTranscriptionCommand,
+  TranscribeStreamingClient,
+} from "@aws-sdk/client-transcribe-streaming";
+import { TranslateClient, TranslateTextCommand } from "@aws-sdk/client-translate";
+import dotenv from "dotenv";
+import { PassThrough } from "stream";
+import { WebSocket } from "ws";
 
 // Extract WebRTC classes from the RTC libraries
-const { RTCPeerConnection, RTCSessionDescription, MediaStream, nonstandard } =
-  avahqWrtc;
+const { RTCPeerConnection, RTCSessionDescription, MediaStream, nonstandard } = avahqWrtc;
 const { RTCAudioSink, RTCAudioSource } = nonstandard;
 
 dotenv.config(); // Load environment variables from .env file
@@ -177,10 +173,7 @@ const connectSignaling = () => {
     });
 
     signaling.send(joinMessage);
-    console.log(
-      "✅ Translation server connected to signaling server",
-      joinMessage
-    );
+    console.log("✅ Translation server connected to signaling server", joinMessage);
   });
 
   // Handle messages from the signaling server (offers, ICE candidates, etc.)
@@ -196,6 +189,35 @@ const connectSignaling = () => {
       for (const [key, value] of languages) {
         console.log("\t", key, "-", value);
       }
+    }
+
+    if (type === "pair") {
+      // maintain mutual connections in connections
+      connections.set(data.a, data.b);
+      connections.set(data.b, data.a);
+
+      console.log("New client pair mapped:", data.a, "<->", data.b);
+
+      if (!pcs.has("translation-server")) {
+        const pcTranslation = new RTCPeerConnection();
+
+        pcTranslation.onicecandidate = (e) => {
+          if (e.candidate) {
+            signaling.send(
+              JSON.stringify({
+                type: "ice-candidate",
+                candidate: e.candidate,
+                from: "translation-server",
+                to: data.a,
+              })
+            );
+          }
+        };
+
+        pcs.set("translation-server", pcTranslation);
+      }
+
+      return;
     }
 
     // if a client accepts a WebRTC connection, they send an "answer"
@@ -243,11 +265,7 @@ const connectSignaling = () => {
         sink.ondata = (data) => {
           // we get data as PCM-16 bit, but we need to downsize to 16000
           // as most devices send higher quality
-          const resampled = downsampleBuffer(
-            data.samples,
-            data.sampleRate,
-            16000
-          );
+          const resampled = downsampleBuffer(data.samples, data.sampleRate, 16000);
           const buffer = Buffer.from(resampled.buffer);
           audioStream.write(buffer);
         };
@@ -322,17 +340,13 @@ const connectSignaling = () => {
                       Text: response.TranslatedText,
                     });
 
-                    const synthSpeechResponse = await pollyClient.send(
-                      synthSpeechCommand
-                    );
+                    const synthSpeechResponse = await pollyClient.send(synthSpeechCommand);
 
                     console.log("Got synth response");
 
                     // response.AudioStream is a readable stream of PCM audio
                     // convert it to a track
-                    const translatedSynthTrack = pcmStreamToTrack(
-                      synthSpeechResponse.AudioStream
-                    );
+                    const translatedSynthTrack = pcmStreamToTrack(synthSpeechResponse.AudioStream);
 
                     // send it to the client
                     pc2.addTrack(translatedSynthTrack);
@@ -386,9 +400,7 @@ const connectSignaling = () => {
 
       // Set the remote description using the client's offer
       // This tells WebRTC what the client wants to send/receive
-      await pc.setRemoteDescription(
-        new RTCSessionDescription({ type: "offer", sdp })
-      );
+      await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }));
 
       // Create our answer SDP (describes what the translation server can send/receive)
       const answer = await pc.createAnswer();
