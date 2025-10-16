@@ -1,10 +1,16 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { v7 } from "uuid";
 
 export default function Home() {
   const [userId, setUserId] = useState<string>("");
   const [peerId, setPeerId] = useState<string>("");
   const [connected, setConnected] = useState(false);
+  const [isTranslationActive, setIsTranslationActive] =
+    useState<boolean>(false);
+
+  type Language = "es-MX" | "en-US";
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>("en-US");
 
   const ws = useRef<WebSocket | null>(null);
   const pcVideo = useRef<RTCPeerConnection | null>(null);
@@ -15,24 +21,21 @@ export default function Home() {
   const remoteVideo = useRef<HTMLVideoElement | null>(null);
   const remoteAudio = useRef<HTMLAudioElement | null>(null);
 
+  // Generate random user ID
   useEffect(() => {
-    const id = Math.random().toString(36).substr(2, 5);
-    setUserId(id);
+    setUserId(v7());
   }, []);
 
+  // Connect to signaling server
   useEffect(() => {
     if (!userId) return;
 
-    console.log(process.env.NEXT_PUBLIC_SIGNAL_SERVER);
     ws.current = new WebSocket(
       process.env.NEXT_PUBLIC_SIGNAL_SERVER || "ws://localhost:3001"
     );
 
     ws.current.onopen = () => {
-      console.log(
-        "✅ Connected to signaling server, sending:",
-        JSON.stringify({ type: "join", from: userId })
-      );
+      // ✅ Connected to signaling server, sending join message
       ws.current?.send(JSON.stringify({ type: "join", from: userId }));
     };
 
@@ -40,6 +43,7 @@ export default function Home() {
       const data = JSON.parse(event.data);
       const { type, from, sdp, candidate } = data;
 
+      // Handle video offers/answers
       if (type === "offer" && from !== "translation-server") {
         console.log("📨 Received offer from peer:", from);
         await pcVideo.current?.setRemoteDescription({ type: "offer", sdp });
@@ -51,22 +55,21 @@ export default function Home() {
             sdp: answer?.sdp,
             from: userId,
             to: from,
+            lang: selectedLanguage,
           })
         );
       } else if (type === "answer") {
         if (from === "translation-server") {
-          console.log("Connect to translation server", sdp);
+          // 🎤 Translation server answer
           await pcAudio.current?.setRemoteDescription({ type: "answer", sdp });
 
-          // ✅ Now that the connection is established, disconnect from signaling
-          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            console.log("Disconnecting from signaling server");
-            ws.current.close();
-          }
+          // ✅ Optionally, disconnect from signaling if translation is established
+          // if (ws.current && ws.current.readyState === WebSocket.OPEN) ws.current.close();
         } else {
           await pcVideo.current?.setRemoteDescription({ type: "answer", sdp });
         }
       } else if (type === "ice-candidate") {
+        // Handle ICE candidates for both video and audio
         if (from === "translation-server") {
           await pcAudio.current?.addIceCandidate(candidate);
         } else {
@@ -78,27 +81,40 @@ export default function Home() {
     return () => ws.current?.close();
   }, [userId]);
 
+  // Initialize local media and peer connections
   useEffect(() => {
     if (!userId) return;
 
     const initMedia = async () => {
+      // Get local video/audio stream
       localStream.current = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: true,
+        audio: {
+          channelCount: 1, // Force mono
+          sampleRate: 16000, // Optional, matches AWS Transcribe preferred rate
+          sampleSize: 16, // 16-bit PCM resolution
+          echoCancellation: true, // Keep or remove depending on your use case
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
-      if (localVideo.current && localStream.current) {
+      if (localVideo.current && localStream.current)
         localVideo.current.srcObject = localStream.current;
-      }
 
+      // --- Video PeerConnection ---
       pcVideo.current = new RTCPeerConnection();
+
+      // Add all local tracks to video peer connection
       localStream.current
         .getTracks()
         .forEach((t) => pcVideo.current?.addTrack(t, localStream.current!));
 
+      // When remote track is received, set it to remoteVideo element
       pcVideo.current.ontrack = (e) => {
         if (remoteVideo.current) remoteVideo.current.srcObject = e.streams[0];
       };
 
+      // ICE candidate gathering for video
       pcVideo.current.onicecandidate = (e) => {
         if (e.candidate && peerId) {
           ws.current?.send(
@@ -112,144 +128,79 @@ export default function Home() {
         }
       };
 
+      // --- Audio PeerConnection ---
       pcAudio.current = new RTCPeerConnection();
+
+      // Add only audio tracks to audio peer connection (for translation server)
       localStream.current
         .getAudioTracks()
-        .forEach((track) =>
-          pcAudio.current?.addTrack(track, localStream.current!)
-        );
+        .forEach((t) => pcAudio.current?.addTrack(t, localStream.current!));
 
+      // When remote track is received, set it to remoteAudio element
       pcAudio.current.ontrack = (e) => {
         if (remoteAudio.current) remoteAudio.current.srcObject = e.streams[0];
       };
 
-      // pcAudio.current.onicecandidate = (e) => {
-      //   if (e.candidate) {
-      //     ws.current?.send(JSON.stringify({
-      //       type: "ice-candidate",
-      //       candidate: e.candidate,
-      //       from: userId,
-      //       to: "translation-server",
-      //     }));
-      //   }
-      // };
-
+      // ICE candidate gathering for audio connection to translation server
       pcAudio.current.onicecandidate = (e) => {
-        if (e.candidate) {
-          // @ts-ignore
-          if (ws.current.readyState === WebSocket.OPEN) {
-            console.log(
-              "Sending to already open ws",
-              JSON.stringify({
-                type: "ice-candidate",
-                candidate: e.candidate,
-                from: userId,
-                to: "translation-server",
-              })
-            );
-            // @ts-ignore
-            ws.current.send(
-              JSON.stringify({
-                type: "ice-candidate",
-                candidate: e.candidate,
-                from: userId,
-                to: "translation-server",
-              })
-            );
-          } else {
-            // @ts-ignore
-            ws.current.addEventListener(
-              "open",
-              () => {
-                console.log(
-                  "Sending to ws on listener",
-                  JSON.stringify({
-                    type: "ice-candidate",
-                    candidate: e.candidate,
-                    from: userId,
-                    to: "translation-server",
-                  })
-                );
-                // @ts-ignore
-                ws.current.send(
-                  JSON.stringify({
-                    type: "ice-candidate",
-                    candidate: e.candidate,
-                    from: userId,
-                    to: "translation-server",
-                  })
-                );
-              },
-              { once: true }
-            );
-          }
+        if (!e.candidate || !ws.current) return;
+
+        /*
+        What an ICE candidate actually is
+        An ICE candidate is essentially:
+        (IP address, port, transport protocol, type)
+        
+        Where:
+        IP address & port → a possible address your peer can reach you at
+        Transport protocol → usually UDP, sometimes TCP
+        Type → how the address was discovered:
+        host → your local LAN address
+        srflx → your public IP discovered via STUN server
+        relay → a TURN server relay address
+        */
+        if (ws.current.readyState === WebSocket.OPEN) {
+          console.log(
+            "Sending ICE candidate to translation server",
+            e.candidate
+          );
+          ws.current.send(
+            JSON.stringify({
+              type: "ice-candidate",
+              candidate: e.candidate,
+              from: userId,
+              to: "translation-server",
+            })
+          );
         }
       };
 
-      // The offerAudio contains an SDP (Session Description) describing:
-      // * Audio/video codecs
-      // * Media capabilities
-      // A list of ICE candidates (possible addresses/ports to connect to)
+      // Create audio offer only if translation is active
+      if (isTranslationActive && pcAudio.current) {
+        const offerAudio = await pcAudio.current.createOffer();
+        await pcAudio.current.setLocalDescription(offerAudio);
 
-      /*
-      What an ICE candidate actually is
-      An ICE candidate is essentially:
-      (IP address, port, transport protocol, type)
-
-      Where:
-
-      IP address & port → a possible address your peer can reach you at
-      Transport protocol → usually UDP, sometimes TCP
-      Type → how the address was discovered:
-      host → your local LAN address
-      srflx → your public IP discovered via STUN server
-      relay → a TURN server relay address
-
-      Example (simplified):
-
-      {
-        "candidate": "candidate:842163049 1 udp 1677729535 192.168.1.5 52345 typ host",
-        "sdpMid": "0",
-        "sdpMLineIndex": 0
+        /*
+        The offerAudio contains an SDP (Session Description) describing:
+        * Audio/video codecs
+        * Media capabilities
+        * A list of ICE candidates (possible addresses/ports to connect to)
+        */
+        ws.current?.send(
+          JSON.stringify({
+            type: "offer",
+            sdp: offerAudio.sdp,
+            from: userId,
+            to: "translation-server",
+            lang: selectedLanguage,
+          })
+        );
       }
-      */
-      const offerAudio = await pcAudio.current.createOffer();
-      await pcAudio.current.setLocalDescription(offerAudio);
-
-      // ws.current?.send(JSON.stringify({
-      //   type: "offer",
-      //   sdp: offerAudio.sdp,
-      //   from: userId,
-      //   to: "translation-server",
-      // }));
-
-      // @ts-ignore
-      const sendWhenOpen = (ws, msg) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          console.log("Send already open", msg);
-          ws.send(msg);
-        } else {
-          ws.addEventListener("open", () => {
-            console.log("Send on listener", msg);
-            ws.send(msg), { once: true };
-          });
-        }
-      };
-
-      sendWhenOpen(
-        ws.current,
-        JSON.stringify({
-          type: "offer",
-          sdp: offerAudio.sdp,
-          from: userId,
-          to: "translation-server",
-        })
-      );
     };
 
     initMedia();
-  }, [userId, peerId]);
+  }, [userId, peerId, isTranslationActive]);
 
+  // Call peer
   const callPeer = async () => {
     if (!peerId || !pcVideo.current) return;
 
@@ -265,22 +216,42 @@ export default function Home() {
         sdp: offer.sdp,
         from: userId,
         to: peerId,
+        lang: selectedLanguage,
       })
     );
   };
+
+  useEffect(() => {
+    ws.current?.send(
+      JSON.stringify({
+        type: "lang",
+        from: userId,
+        to: "translation-server",
+        lang: selectedLanguage,
+      })
+    );
+  }, [selectedLanguage]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <h1>🎥 P2P Video + 🎧 Translation Hybrid</h1>
 
-      <div>
+      <div className="flex gap-4 items-center">
+        <label>
+          My user ID: <code>{userId}</code>
+        </label>
         <label>Enter peer ID: </label>
         <input
+          className="border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           value={peerId}
           onChange={(e) => setPeerId(e.target.value)}
           placeholder="Peer ID"
         />
-        <button onClick={callPeer} disabled={!peerId || connected}>
+        <button
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          onClick={callPeer}
+          disabled={!peerId || connected}
+        >
           Call
         </button>
       </div>
@@ -296,7 +267,6 @@ export default function Home() {
             style={{ width: 300, height: 200, backgroundColor: "black" }}
           />
         </div>
-
         <div>
           <h3>Remote Video</h3>
           <video
@@ -308,14 +278,38 @@ export default function Home() {
         </div>
       </div>
 
-      <div>
-        <h3>Translated Audio</h3>
-        <audio ref={remoteAudio} autoPlay controls />
+      <div className="flex gap-2">
+        <select
+          className="border border-gray-300 bg-white text-gray-900 px-3 py-2 rounded-md appearance-none"
+          value={selectedLanguage}
+          onChange={(e) =>
+            setSelectedLanguage(
+              e.target.options[e.target.selectedIndex].value as Language
+            )
+          }
+        >
+          <option value="en-US">en-US</option>
+          <option value="en-MX">es-MX</option>
+        </select>
+
+        <button
+          onClick={() => setIsTranslationActive(!isTranslationActive)}
+          className={`${
+            isTranslationActive ? "bg-red-900" : "bg-green-700"
+          } text-white font-bold py-2 px-4 rounded transition-colors duration-300`}
+        >
+          {isTranslationActive ? "Stop Translation" : "Start Translation"}
+        </button>
       </div>
 
       <p>
         Your ID: <b>{userId}</b>
       </p>
+
+      <div>
+        <h3>Translated Audio</h3>
+        <audio ref={remoteAudio} autoPlay controls />
+      </div>
     </div>
   );
 }

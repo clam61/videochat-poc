@@ -16,7 +16,7 @@ wss.on("connection", (ws) => {
 
     try {
       const data = JSON.parse(msg);
-      const { type, from, to } = data;
+      const { type, from, to, lang } = data;
 
       switch (type) {
         // when receiving a join message, add the user to the peers map
@@ -27,15 +27,23 @@ wss.on("connection", (ws) => {
             console.log("\t", key);
           }
           break;
+
         // when receiving these messages, find the target
-        // if the target exists forward the message
+        case "lang":
         case "offer":
         case "answer":
-        case "ice-candidate":
           if (!to) return;
           const target = peers.get(to);
-
           if (target) target.send(JSON.stringify(data));
+          break;
+
+        case "ice-candidate":
+          if (!to) return;
+          const targetCandidate = peers.get(to);
+          if (targetCandidate) targetCandidate.send(JSON.stringify(data));
+          break;
+
+        default:
           break;
       }
     } catch (e) {
