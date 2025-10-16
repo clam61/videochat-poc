@@ -9,8 +9,8 @@ export default function Home() {
   const [isTranslationActive, setIsTranslationActive] =
     useState<boolean>(false);
 
-  type Language = "es-MX" | "en-US" | "none";
-  const [selectedLanguage, setSelectedLanguage] = useState<Language>();
+  type Language = "es-MX" | "en-US";
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>("en-US");
 
   const ws = useRef<WebSocket | null>(null);
   const pcVideo = useRef<RTCPeerConnection | null>(null);
@@ -89,7 +89,14 @@ export default function Home() {
       // Get local video/audio stream
       localStream.current = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: true,
+        audio: {
+          channelCount: 1, // Force mono
+          sampleRate: 16000, // Optional, matches AWS Transcribe preferred rate
+          sampleSize: 16, // 16-bit PCM resolution
+          echoCancellation: true, // Keep or remove depending on your use case
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
       if (localVideo.current && localStream.current)
         localVideo.current.srcObject = localStream.current;
@@ -281,7 +288,6 @@ export default function Home() {
             )
           }
         >
-          <option value="none">Language</option>
           <option value="en-US">en-US</option>
           <option value="en-MX">es-MX</option>
         </select>
