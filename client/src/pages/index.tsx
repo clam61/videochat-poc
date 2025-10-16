@@ -6,8 +6,7 @@ export default function Home() {
   const [userId, setUserId] = useState<string>("");
   const [peerId, setPeerId] = useState<string>("");
   const [connected, setConnected] = useState(false);
-  const [isTranslationActive, setIsTranslationActive] =
-    useState<boolean>(false);
+  const [isTranslationActive, setIsTranslationActive] = useState<boolean>(false);
 
   type Language = "es-MX" | "en-US";
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("en-US");
@@ -30,9 +29,7 @@ export default function Home() {
   useEffect(() => {
     if (!userId) return;
 
-    ws.current = new WebSocket(
-      process.env.NEXT_PUBLIC_SIGNAL_SERVER || "ws://localhost:3001"
-    );
+    ws.current = new WebSocket(process.env.NEXT_PUBLIC_SIGNAL_SERVER || "ws://localhost:3001");
 
     ws.current.onopen = () => {
       // ✅ Connected to signaling server, sending join message
@@ -138,31 +135,21 @@ export default function Home() {
 
       // When remote track is received, set it to remoteAudio element
       pcAudio.current.ontrack = (e) => {
-        if (remoteAudio.current) remoteAudio.current.srcObject = e.streams[0];
+        console.log("[CLIENT] Audio track received:", e.streams[0]);
+        if (remoteAudio.current) {
+          if (!remoteAudio.current.srcObject) {
+            remoteAudio.current.srcObject = e.streams[0];
+            console.log("[CLIENT] Connected remoteAudio.srcObject");
+          } else {
+            console.log("[CLIENT] remoteAudio already connected");
+          }
+        }
       };
 
-      // ICE candidate gathering for audio connection to translation server
       pcAudio.current.onicecandidate = (e) => {
         if (!e.candidate || !ws.current) return;
-
-        /*
-        What an ICE candidate actually is
-        An ICE candidate is essentially:
-        (IP address, port, transport protocol, type)
-        
-        Where:
-        IP address & port → a possible address your peer can reach you at
-        Transport protocol → usually UDP, sometimes TCP
-        Type → how the address was discovered:
-        host → your local LAN address
-        srflx → your public IP discovered via STUN server
-        relay → a TURN server relay address
-        */
         if (ws.current.readyState === WebSocket.OPEN) {
-          console.log(
-            "Sending ICE candidate to translation server",
-            e.candidate
-          );
+          console.log("[CLIENT] Sending ICE candidate to translation-server", e.candidate);
           ws.current.send(
             JSON.stringify({
               type: "ice-candidate",
@@ -174,17 +161,64 @@ export default function Home() {
         }
       };
 
+      // // ICE candidate gathering for audio connection to translation server
+      // pcAudio.current.onicecandidate = (e) => {
+      //   if (!e.candidate || !ws.current) return;
+
+      //   /*
+      //   What an ICE candidate actually is
+      //   An ICE candidate is essentially:
+      //   (IP address, port, transport protocol, type)
+
+      //   Where:
+      //   IP address & port → a possible address your peer can reach you at
+      //   Transport protocol → usually UDP, sometimes TCP
+      //   Type → how the address was discovered:
+      //   host → your local LAN address
+      //   srflx → your public IP discovered via STUN server
+      //   relay → a TURN server relay address
+      //   */
+      //   if (ws.current.readyState === WebSocket.OPEN) {
+      //     console.log("Sending ICE candidate to translation server", e.candidate);
+      //     ws.current.send(
+      //       JSON.stringify({
+      //         type: "ice-candidate",
+      //         candidate: e.candidate,
+      //         from: userId,
+      //         to: "translation-server",
+      //       })
+      //     );
+      //   }
+      // };
+
       // Create audio offer only if translation is active
+      // if (isTranslationActive && pcAudio.current) {
+      //   const offerAudio = await pcAudio.current.createOffer();
+      //   await pcAudio.current.setLocalDescription(offerAudio);
+
+      //   /*
+      //   The offerAudio contains an SDP (Session Description) describing:
+      //   * Audio/video codecs
+      //   * Media capabilities
+      //   * A list of ICE candidates (possible addresses/ports to connect to)
+      //   */
+      //   ws.current?.send(
+      //     JSON.stringify({
+      //       type: "offer",
+      //       sdp: offerAudio.sdp,
+      //       from: userId,
+      //       to: "translation-server",
+      //       lang: selectedLanguage,
+      //     })
+      //   );
+      // }
+
       if (isTranslationActive && pcAudio.current) {
         const offerAudio = await pcAudio.current.createOffer();
         await pcAudio.current.setLocalDescription(offerAudio);
 
-        /*
-        The offerAudio contains an SDP (Session Description) describing:
-        * Audio/video codecs
-        * Media capabilities
-        * A list of ICE candidates (possible addresses/ports to connect to)
-        */
+        console.log("[CLIENT] Sending audio offer to translation-server");
+
         ws.current?.send(
           JSON.stringify({
             type: "offer",
@@ -283,9 +317,7 @@ export default function Home() {
           className="border border-gray-300 bg-white text-gray-900 px-3 py-2 rounded-md appearance-none"
           value={selectedLanguage}
           onChange={(e) =>
-            setSelectedLanguage(
-              e.target.options[e.target.selectedIndex].value as Language
-            )
+            setSelectedLanguage(e.target.options[e.target.selectedIndex].value as Language)
           }
         >
           <option value="en-US">en-US</option>

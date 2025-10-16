@@ -339,17 +339,37 @@ const connectSignaling = () => {
                       LanguageCode: languages.get(connections.get(from)),
                       Text: response.TranslatedText,
                     });
-
                     const synthSpeechResponse = await pollyClient.send(synthSpeechCommand);
-
                     console.log("Got synth response");
 
-                    // response.AudioStream is a readable stream of PCM audio
-                    // convert it to a track
+                    // create RTCAudioTrack from Polly stream
+                    // const translatedSynthTrack = pcmStreamToTrack(synthSpeechResponse.AudioStream);
+
+                    // // find the client's PeerConnection
+                    // const pcClient = pcs.get(from);
+                    // if (!pcClient) return;
+
+                    // pcClient.addTrack(translatedSynthTrack);
+
+                    // // create a MediaStream and add a track to it
+                    // const outgoingStream = new MediaStream();
+                    // outgoingStream.addTrack(translatedSynthTrack);
+
+                    // // add a track to PeerConnection
+                    // pcClient.addTrack(translatedSynthTrack, outgoingStream);
+
                     const translatedSynthTrack = pcmStreamToTrack(synthSpeechResponse.AudioStream);
 
-                    // send it to the client
-                    pc2.addTrack(translatedSynthTrack);
+                    // find the client's PeerConnection
+                    const pcClient = pcs.get(from);
+                    if (!pcClient) return;
+
+                    // create a MediaStream and add the track
+                    const outgoingStream = new MediaStream();
+                    outgoingStream.addTrack(translatedSynthTrack);
+
+                    // add the track to the PeerConnection only **once**
+                    pcClient.addTrack(translatedSynthTrack, outgoingStream);
                   }
                 }
               }
@@ -462,3 +482,39 @@ const scheduleReconnect = () => {
 
 // Start the initial connection
 connectSignaling();
+
+// Time →
+// Client A                        Translation Server                        Client B
+// ------------------------------------------------------------------------------------------------
+// 1. Generate userId → v7()
+// 2. WS connect → send join { type: "join", from: userId }
+//                                    ← join received
+// 3. Optionally, set peerId manually
+// 4. Call peer → createOffer (video) ---------------------------->
+//                                    receiveOffer (video) -------------
+//                                    createAnswer (video) <------------
+// 5. ICE candidates (video) ------------------------------------>
+//                                    forward ICE candidate <------------
+// 6. Local audio tracks added to pcAudio
+// 7. Start translation (toggle button) → createOffer (audio) -->
+//                                    receiveOffer (audio) --------------
+//                                    setRemoteDescription, createAnswer <-
+//                                    send answer <---------------------
+//    [ERROR 1] If pcs.get(connections.get(from)) === undefined → No peer, return
+// 8. Client sends audio track → pcAudio.ontrack -------------->
+//                                    Translation Server receives track
+//                                    ↓
+//                                    RTCAudioSink captures PCM
+//                                    ↓
+//                                    Downsample → AudioStream → AWS Transcribe
+//                                    ↓
+//                                    Translate text → AWS Translate
+//                                    ↓
+//                                    Text → Polly → PCM audio
+//                                    ↓
+//    [ERROR 2] addTrack called twice on same RTCPeerConnection → Sender already exists
+//                                    ↓
+//                                    RTCAudioTrack added to pcClient
+// 9. ICE candidate exchange for audio -------------------------->
+// 10. Client receives remoteAudio track → remoteAudio.srcObject = stream
+//    [ERROR 3] On client pcAudio.ontrack may not be correctly set → Audio not heard
