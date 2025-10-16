@@ -221,6 +221,16 @@ const connectSignaling = () => {
       // When the client sends us audio tracks, this event fires
       pc.ontrack = (event) => {
         console.log(`Received audio track from ${from}`);
+
+        // get the peer this user is connected to
+        const pc2 = pcs.get(connections.get(from));
+
+        // no peer no point
+        if (!pc2) {
+          console.log("No peer, return");
+          return;
+        }
+
         const incomingStream = event.streams[0];
         const [audioTrack] = incomingStream.getAudioTracks();
 
@@ -325,7 +335,7 @@ const connectSignaling = () => {
                     );
 
                     // send it to the client
-                    pc.addTrack(translatedSynthTrack);
+                    pc2.addTrack(translatedSynthTrack);
                   }
                 }
               }
