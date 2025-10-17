@@ -20,501 +20,389 @@
 
 // brew install git openssl pkg-config openssl homebrew/dupes/ncurses nss expat
 // brew install ncurses
-import fs from "fs";
+// translation-server.fixed.js
+// translation-server.js
+// translation-server.js
+import dotenv from "dotenv";
+dotenv.config();
 
-// Create a writable stream
-const file = fs.createWriteStream("test.raw");
-
-import avahqWrtc from "@avahq/wrtc"; // Node.js WebRTC implementation
+import avahqWrtc from "@avahq/wrtc";
 import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
 import {
   StartStreamTranscriptionCommand,
   TranscribeStreamingClient,
 } from "@aws-sdk/client-transcribe-streaming";
 import { TranslateClient, TranslateTextCommand } from "@aws-sdk/client-translate";
-import dotenv from "dotenv";
 import { PassThrough } from "stream";
 import { WebSocket } from "ws";
 
-// Extract WebRTC classes from the RTC libraries
-const { RTCPeerConnection, RTCSessionDescription, MediaStream, nonstandard } = avahqWrtc;
+const { RTCPeerConnection, RTCSessionDescription, nonstandard } = avahqWrtc;
 const { RTCAudioSink, RTCAudioSource } = nonstandard;
 
-dotenv.config(); // Load environment variables from .env file
+const SIGNAL_URL = process.env.SIGNAL_SERVER;
+const AWS_REGION = process.env.AWS_REGION || "us-west-2";
+const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID;
+const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY;
 
-// Create AWS client once
+if (!SIGNAL_URL) throw new Error("Set SIGNAL_SERVER env");
+if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY)
+  throw new Error("Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in env");
+
+// --- AWS clients ---
 const transcribeClient = new TranscribeStreamingClient({
-  region: "us-west-2",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.YOUR_SECRET_ACCESS_KEY,
-  },
+  region: AWS_REGION,
+  credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY },
 });
-
 const translateClient = new TranslateClient({
-  region: "us-west-2", // or whatever region your Transcribe/Polly setup uses
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.YOUR_SECRET_ACCESS_KEY,
-  },
+  region: AWS_REGION,
+  credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY },
 });
-
 const pollyClient = new PollyClient({
-  region: "us-west-2",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.YOUR_SECRET_ACCESS_KEY,
-  },
+  region: AWS_REGION,
+  credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY },
 });
 
-// Map to store active peer connections; key = client ID, value = RTCPeerConnection instance
-const pcs = new Map();
+// Maps to track resources per client
+const pcs = new Map(); // clientId -> RTCPeerConnection
+const sinks = new Map(); // clientId -> RTCAudioSink
+const audioSources = new Map(); // clientId -> RTCAudioSource (for sending TTS)
+const languages = new Map(); // clientId -> language string (e.g., 'en-US')
 
-// Map to store language ; key = client ID, value = language of the incoming audio
-/// TODO lang map would continue to grow indefinitely
-const languages = new Map();
+// Connect to signaling server (simple WS client)
+let signaling = null;
+const connectSignaling = () => {
+  signaling = new WebSocket(SIGNAL_URL);
 
-/// TODO lang map would continue to grow indefinitely
-const connections = new Map();
+  signaling.on("open", () => {
+    console.log("[signal] connected");
+    signaling.send(JSON.stringify({ type: "join", from: "translation-server" }));
+  });
 
-// Get the signaling server URL from environment variables
-const signalWssUrl = process.env.SIGNAL_SERVER;
-if (!signalWssUrl) {
-  throw Error("Set env SIGNAL_SERVER");
-}
+  signaling.on("message", async (m) => {
+    try {
+      const data = JSON.parse(m.toString());
+      const { type, from, sdp, candidate, lang } = data;
 
-console.log(`Signaling server: ${signalWssUrl}`);
-
-// --- Connection state tracking variables ---
-let signaling; // WebSocket connection instance
-let reconnectAttempts = 0; // Number of times we've tried to reconnect
-let reconnectTimeout = null; // Used to prevent multiple simultaneous reconnect attempts
-
-const pcmStreamToTrack = (pcmStream) => {
-  const source = new RTCAudioSource();
-  const track = source.createTrack();
-
-  const FRAME_SIZE_SAMPLES = 160; // 10ms @ 16kHz
-  const BYTES_PER_SAMPLE = 2;
-  const FRAME_SIZE_BYTES = FRAME_SIZE_SAMPLES * BYTES_PER_SAMPLE;
-
-  let leftover = Buffer.alloc(0);
-
-  pcmStream.on("data", (chunk) => {
-    // Combine leftover + new chunk
-    const buffer = Buffer.concat([leftover, chunk]);
-    const totalFrames = Math.floor(buffer.length / FRAME_SIZE_BYTES);
-    const validBytes = totalFrames * FRAME_SIZE_BYTES;
-    leftover = buffer.subarray(validBytes);
-
-    for (let i = 0; i < totalFrames; i++) {
-      const frameStart = i * FRAME_SIZE_BYTES;
-      const frame = buffer.subarray(frameStart, frameStart + FRAME_SIZE_BYTES);
-
-      const int16Frame = new Int16Array(FRAME_SIZE_SAMPLES);
-      for (let j = 0; j < FRAME_SIZE_SAMPLES; j++) {
-        int16Frame[j] = frame.readInt16LE(j * BYTES_PER_SAMPLE);
+      if (lang && from) {
+        languages.set(from, lang);
       }
 
-      source.onData({
-        samples: int16Frame,
-        sampleRate: 16000,
-        bitsPerSample: 16,
-        channelCount: 1,
-        numberOfFrames: FRAME_SIZE_SAMPLES,
-      });
+      if (type === "offer" && from) {
+        console.log("[signal] offer from", from, "lang:", languages.get(from));
+        await handleOffer(from, sdp);
+      } else if (type === "ice-candidate" && from && candidate) {
+        const pc = pcs.get(from);
+        if (pc) {
+          try {
+            await pc.addIceCandidate(candidate);
+          } catch (err) {
+            console.warn("addIceCandidate err:", err);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[signal] message parse error", err);
     }
   });
 
-  pcmStream.on("end", () => {
-    // optional — if you ever want to close the track when done
-    // track.stop();
+  signaling.on("close", () => {
+    console.warn("[signal] closed, reconnecting in 2s...");
+    setTimeout(connectSignaling, 2000);
   });
 
-  return track;
+  signaling.on("error", (e) => {
+    console.error("[signal] error", e);
+    try {
+      signaling.close();
+    } catch {}
+  });
 };
 
-const downsampleBuffer = (buffer, inputRate = 48000, outputRate = 16000) => {
+// Handle incoming offer from client -> create PC, add outgoing TTS track before answer
+async function handleOffer(clientId, offerSdp) {
+  // Create PC
+  const pc = new RTCPeerConnection();
+  pcs.set(clientId, pc);
+
+  // Create (and store) one RTCAudioSource per client to reuse for all TTS chunks
+  const audioSource = new RTCAudioSource();
+  audioSources.set(clientId, audioSource);
+  const ttsTrack = audioSource.createTrack();
+  // Add track BEFORE createAnswer so answer SDP contains our send capability
+  pc.addTrack(ttsTrack);
+
+  // Clean-up helper
+  const cleanup = () => {
+    try {
+      ttsTrack.stop();
+    } catch {}
+    try {
+      audioSources.delete(clientId);
+    } catch {}
+    const s = sinks.get(clientId);
+    if (s)
+      try {
+        s.stop();
+      } catch {}
+    sinks.delete(clientId);
+    pcs.delete(clientId);
+    languages.delete(clientId);
+  };
+
+  // ICE candidate -> send back to client via signaling server
+  pc.onicecandidate = (e) => {
+    if (e.candidate && signaling && signaling.readyState === WebSocket.OPEN) {
+      signaling.send(
+        JSON.stringify({
+          type: "ice-candidate",
+          candidate: e.candidate,
+          from: "translation-server",
+          to: clientId,
+        })
+      );
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    console.log(`[pc ${clientId}] state:`, pc.connectionState);
+    if (
+      pc.connectionState === "closed" ||
+      pc.connectionState === "failed" ||
+      pc.connectionState === "disconnected"
+    ) {
+      cleanup();
+    }
+  };
+
+  // When client sends audio -> create sink and stream to Transcribe
+  pc.ontrack = (ev) => {
+    console.log(`[pc ${clientId}] ontrack got streams count:`, ev.streams.length);
+    const incomingStream = ev.streams[0];
+    if (!incomingStream) return;
+    const [audioTrack] = incomingStream.getAudioTracks();
+    if (!audioTrack) return;
+
+    // create sink for that track
+    const sink = new RTCAudioSink(audioTrack);
+    sinks.set(clientId, sink);
+
+    // Create PassThrough that will receive PCM16LE frames at 16k
+    const pcmStream = new PassThrough();
+
+    sink.ondata = (d) => {
+      // d.samples may be Float32Array or Int16Array
+      let int16Buffer;
+      if (d.samples instanceof Float32Array) {
+        // convert float32 [-1,1] -> int16
+        const f = d.samples;
+        const tmp = new Int16Array(f.length);
+        for (let i = 0; i < f.length; i++) {
+          const s = Math.max(-1, Math.min(1, f[i]));
+          tmp[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        }
+        int16Buffer = Buffer.from(tmp.buffer);
+      } else if (d.samples instanceof Int16Array) {
+        int16Buffer = Buffer.from(d.samples.buffer);
+      } else {
+        // fallback
+        int16Buffer = Buffer.from(d.samples.buffer || d.samples);
+      }
+
+      const sampleRate = d.sampleRate || 48000;
+      if (sampleRate !== 16000) {
+        const int16 = new Int16Array(
+          int16Buffer.buffer,
+          int16Buffer.byteOffset,
+          int16Buffer.byteLength / 2
+        );
+        const down = simpleDownsampleInt16(int16, sampleRate, 16000);
+        pcmStream.write(Buffer.from(down.buffer));
+      } else {
+        pcmStream.write(int16Buffer);
+      }
+    };
+
+    audioTrack.onended = () => {
+      console.log(`[pc ${clientId}] audioTrack ended`);
+      try {
+        sink.stop();
+      } catch {}
+      pcmStream.end();
+    };
+
+    // Spawn the transcribe->translate->polly pipeline
+    startAwsTranscribePipeline(pcmStream, clientId).catch((err) =>
+      console.error("transcribe pipeline error", err)
+    );
+  };
+
+  // Set remote description from client
+  await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: offerSdp }));
+
+  // Create and set local answer (we already added ttsTrack so answer includes send capability)
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  // send answer back via signaling server
+  if (signaling && signaling.readyState === WebSocket.OPEN) {
+    signaling.send(
+      JSON.stringify({
+        type: "answer",
+        sdp: answer.sdp,
+        from: "translation-server",
+        to: clientId,
+      })
+    );
+    console.log(`[signal] sent answer to ${clientId}`);
+  }
+}
+
+// Simple downsample of Int16Array
+function simpleDownsampleInt16(inputInt16, inputRate, outputRate) {
+  if (outputRate === inputRate) return inputInt16;
   const sampleRatio = inputRate / outputRate;
-  const newLength = Math.round(buffer.length / sampleRatio);
-  const result = new Int16Array(newLength);
+  const newLength = Math.round(inputInt16.length / sampleRatio);
+  const out = new Int16Array(newLength);
   let offsetResult = 0;
   let offsetBuffer = 0;
-  while (offsetResult < result.length) {
+  while (offsetResult < newLength) {
     const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRatio);
-    // simple average of samples in this window
-    let accum = 0;
-    let count = 0;
-    for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
-      accum += buffer[i];
+    let acc = 0,
+      count = 0;
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < inputInt16.length; i++) {
+      acc += inputInt16[i];
       count++;
     }
-    result[offsetResult] = accum / count;
+    out[offsetResult] = count ? Math.round(acc / count) : 0;
     offsetResult++;
     offsetBuffer = nextOffsetBuffer;
   }
-  return result;
-};
+  return out;
+}
 
-/**
- * Connects to the signaling server via WebSocket.
- * If the connection drops, automatically attempts to reconnect with exponential backoff.
- */
-const connectSignaling = () => {
-  signaling = new WebSocket(signalWssUrl);
+// Convert arbitrary stream/Uint8Array to Buffer
+function streamToBuffer(stream) {
+  return new Promise((resolve, reject) => {
+    if (!stream) return resolve(Buffer.alloc(0));
+    if (stream instanceof Uint8Array) return resolve(Buffer.from(stream));
+    const chunks = [];
+    stream.on?.("data", (c) => chunks.push(Buffer.from(c)));
+    stream.on?.("end", () => resolve(Buffer.concat(chunks)));
+    stream.on?.("error", (e) => reject(e));
+  });
+}
 
-  // When connection to signaling server is open, announce ourselves as the translation server
-  signaling.on("open", () => {
-    reconnectAttempts = 0; // Reset reconnection counter after success
+// Buffering function to feed chunks of 320 bytes (10ms @16k) into RTCAudioSource.onData
+function feedAudioBufferToSource(audioSource, buffer) {
+  // buffer is Buffer of PCM16LE at 16000Hz
+  const BYTES_PER_FRAME = 160 * 2; // 160 samples * 2 bytes
+  // keep leftover between calls
+  if (!audioSource._leftover) audioSource._leftover = Buffer.alloc(0);
+  let combined = Buffer.concat([audioSource._leftover, buffer]);
+  const frames = Math.floor(combined.length / BYTES_PER_FRAME);
+  const usedBytes = frames * BYTES_PER_FRAME;
+  const leftover = combined.subarray(usedBytes);
+  audioSource._leftover = Buffer.from(leftover);
 
-    const joinMessage = JSON.stringify({
-      type: "join",
-      from: "translation-server", // our ID used by signaling server to route messages
+  for (let i = 0; i < frames; i++) {
+    const start = i * BYTES_PER_FRAME;
+    const frameBuf = combined.subarray(start, start + BYTES_PER_FRAME);
+    const int16 = new Int16Array(BYTES_PER_FRAME / 2);
+    for (let j = 0; j < int16.length; j++) {
+      int16[j] = frameBuf.readInt16LE(j * 2);
+    }
+    audioSource.onData({
+      samples: int16,
+      sampleRate: 16000,
+      bitsPerSample: 16,
+      channelCount: 1,
+      numberOfFrames: 160,
     });
+  }
+}
 
-    signaling.send(joinMessage);
-    console.log("✅ Translation server connected to signaling server", joinMessage);
+// Main pipeline: stream PCM -> AWS Transcribe Streaming -> Translate -> Polly -> push to client RTCAudioSource
+// Main pipeline: stream PCM -> AWS Transcribe Streaming -> Translate -> Polly -> push to client RTCAudioSource
+async function startAwsTranscribePipeline(pcmStream, clientId) {
+  const language = languages.get(clientId) || "en-US";
+  console.log(`[transcribe] start for ${clientId} lang=${language}`);
+
+  const command = new StartStreamTranscriptionCommand({
+    LanguageCode: language,
+    MediaEncoding: "pcm",
+    MediaSampleRateHertz: 16000,
+    AudioStream: (async function* () {
+      for await (const chunk of pcmStream) {
+        yield { AudioEvent: { AudioChunk: chunk } };
+      }
+    })(),
   });
 
-  // Handle messages from the signaling server (offers, ICE candidates, etc.)
-  signaling.on("message", async (msg) => {
-    console.log("On message", msg.toString());
-    const data = JSON.parse(msg);
-    const { type, from, sdp, candidate, lang } = data;
+  const resp = await transcribeClient.send(command);
 
-    // set the language in a map if it exists
-    if (lang) {
-      languages.set(from, lang);
+  for await (const event of resp.TranscriptResultStream) {
+    if (event.TranscriptEvent) {
+      for (const r of event.TranscriptEvent.Transcript.Results) {
+        if (!r.IsPartial && r.Alternatives && r.Alternatives[0]) {
+          const text = r.Alternatives[0].Transcript;
+          console.log(`[transcribe][${clientId}] final:`, text);
 
-      for (const [key, value] of languages) {
-        console.log("\t", key, "-", value);
-      }
-    }
+          // Choose target language: for demo, translate to Spanish (es) if source is English, else to English.
+          const srcLangCode = (language || "en-US").split("-")[0];
+          const targetLangCode = srcLangCode === "en" ? "es" : "en";
 
-    if (type === "pair") {
-      // maintain mutual connections in connections
-      connections.set(data.a, data.b);
-      connections.set(data.b, data.a);
+          // Translate
+          const tr = await translateClient.send(
+            new TranslateTextCommand({
+              Text: text,
+              SourceLanguageCode: srcLangCode,
+              TargetLanguageCode: targetLangCode,
+            })
+          );
+          const translatedText = tr.TranslatedText;
+          console.log(`[translate] ->`, translatedText);
 
-      console.log("New client pair mapped:", data.a, "<->", data.b);
-
-      if (!pcs.has("translation-server")) {
-        const pcTranslation = new RTCPeerConnection();
-
-        pcTranslation.onicecandidate = (e) => {
-          if (e.candidate) {
+          // Send translated text to signaling server
+          if (signaling && signaling.readyState === WebSocket.OPEN) {
             signaling.send(
               JSON.stringify({
-                type: "ice-candidate",
-                candidate: e.candidate,
+                type: "translation-text",
                 from: "translation-server",
-                to: data.a,
+                to: clientId,
+                text: translatedText,
               })
             );
           }
-        };
 
-        pcs.set("translation-server", pcTranslation);
-      }
-
-      return;
-    }
-
-    // if a client accepts a WebRTC connection, they send an "answer"
-    if (type === "answer") {
-      // add connections for fast querying
-      connections.set(from, to);
-      connections.set(to, from);
-    }
-    // If a client wants to start a WebRTC connection, they send an "offer"
-    else if (type === "offer") {
-      const audioLanguage = languages.get(from);
-      console.log(`Received offer from ${from} in ${audioLanguage}`);
-
-      // Create a new peer connection for this client
-      const pc = new RTCPeerConnection();
-
-      // Store it in the map so we can reference it later (e.g., for ICE candidates)
-      pcs.set(from, pc);
-
-      // Create a new MediaStream for sending audio back to the client
-      // const outgoingStream = new MediaStream();
-
-      // When the client sends us audio tracks, this event fires
-      pc.ontrack = (event) => {
-        console.log(`Received audio track from ${from}`);
-
-        // get the peer this user is connected to
-        const pc2 = pcs.get(connections.get(from));
-
-        // no peer no point
-        if (!pc2) {
-          console.log("No peer, return");
-          return;
-        }
-
-        const incomingStream = event.streams[0];
-        const [audioTrack] = incomingStream.getAudioTracks();
-
-        // Create an audio sink to capture PCM frames from the WebRTC track
-        const sink = new RTCAudioSink(audioTrack);
-
-        const audioStream = new PassThrough();
-
-        // When frames arrive, push them into the stream
-        sink.ondata = (data) => {
-          // we get data as PCM-16 bit, but we need to downsize to 16000
-          // as most devices send higher quality
-          const resampled = downsampleBuffer(data.samples, data.sampleRate, 16000);
-          const buffer = Buffer.from(resampled.buffer);
-          audioStream.write(buffer);
-        };
-
-        // sink.ondata = (data) => {
-        //   // data.samples is a Float32Array, convert to PCM16 for AWS
-        //   const buffer = Buffer.alloc(data.samples.length * 2);
-        //   for (let i = 0; i < data.samples.length; i++) {
-        //     const s = Math.max(-1, Math.min(1, data.samples[i]));
-        //     //buffer.writeInt16LE(s * 0x7fff, i * 2);
-        //     buffer.writeInt16LE(s < 0 ? s * 0x8000 : s * 0x7fff, i * 2);
-        //   }
-        //   //audioStream.write(buffer);
-        //   file.write(buffer);
-        // };
-
-        // When the track ends, close the stream
-        audioTrack.onended = () => {
-          console.log("Audio track ended");
-          sink.stop();
-          audioStream.end();
-        };
-
-        // Send the stream to AWS Transcribe
-        const startAwsTranscribe = async (pcmStream, language) => {
-          console.log("Start AWS transcribe for language", language);
-          const command = new StartStreamTranscriptionCommand({
-            LanguageCode: language, // or auto-detect if supported
-            MediaEncoding: "pcm",
-            MediaSampleRateHertz: 16000, // or 16000 depending on your input
-            AudioStream: (async function* () {
-              for await (const chunk of pcmStream) {
-                yield { AudioEvent: { AudioChunk: chunk } };
-              }
-            })(),
-          });
-
-          try {
-            const response = await transcribeClient.send(command);
-            for await (const event of response.TranscriptResultStream) {
-              if (event.TranscriptEvent) {
-                const results = event.TranscriptEvent.Transcript.Results;
-                for (const result of results) {
-                  // if the result is final
-                  if (!result.IsPartial) {
-                    // now translate to the target language
-                    const transcript = result.Alternatives[0].Transcript;
-                    console.log("Final transcript:", transcript);
-
-                    // get source language
-                    const sourceLanguage = languages.get(from);
-                    // get target language
-                    // const targetLanguage = languages.get(connections.get(from))
-                    const targetLanguage = "es-mx";
-
-                    const command = new TranslateTextCommand({
-                      Text: transcript,
-                      SourceLanguageCode: sourceLanguage.split("-")[0],
-                      TargetLanguageCode: targetLanguage.split("-")[0],
-                    });
-
-                    const response = await translateClient.send(command);
-
-                    console.log("Translated:", response.TranslatedText);
-
-                    // now convert to audio
-                    const synthSpeechCommand = new SynthesizeSpeechCommand({
-                      OutputFormat: "pcm", // PCM audio suitable for streaming over WebRTC
-                      VoiceId: "Lucia", // Spanish voice
-                      SampleRate: "16000",
-                      LanguageCode: languages.get(connections.get(from)),
-                      Text: response.TranslatedText,
-                    });
-                    const synthSpeechResponse = await pollyClient.send(synthSpeechCommand);
-                    console.log("Got synth response");
-
-                    // create RTCAudioTrack from Polly stream
-                    // const translatedSynthTrack = pcmStreamToTrack(synthSpeechResponse.AudioStream);
-
-                    // // find the client's PeerConnection
-                    // const pcClient = pcs.get(from);
-                    // if (!pcClient) return;
-
-                    // pcClient.addTrack(translatedSynthTrack);
-
-                    // // create a MediaStream and add a track to it
-                    // const outgoingStream = new MediaStream();
-                    // outgoingStream.addTrack(translatedSynthTrack);
-
-                    // // add a track to PeerConnection
-                    // pcClient.addTrack(translatedSynthTrack, outgoingStream);
-
-                    const translatedSynthTrack = pcmStreamToTrack(synthSpeechResponse.AudioStream);
-
-                    // find the client's PeerConnection
-                    const pcClient = pcs.get(from);
-                    if (!pcClient) return;
-
-                    // create a MediaStream and add the track
-                    const outgoingStream = new MediaStream();
-                    outgoingStream.addTrack(translatedSynthTrack);
-
-                    // add the track to the PeerConnection only **once**
-                    pcClient.addTrack(translatedSynthTrack, outgoingStream);
-                  }
-                }
-              }
-            }
-          } catch (err) {
-            console.error("Transcribe error:", err);
-          }
-        };
-        startAwsTranscribe(audioStream, audioLanguage);
-
-        // Forward each incoming audio track into our outgoing stream
-        // (This is where you could do audio processing/translation)
-        // incomingStream.getAudioTracks().forEach((track) => {
-        //   outgoingStream.addTrack(track);
-        // });
-
-        // get the peer this user is connected to
-        //const pc2 = pcs.get(connections.get(from));
-
-        // no peer connection then return
-        //if (!pc2) return;
-
-        // encode audio to pcm
-        // stream audio to speech to text
-        // translate text to text
-        // create text to speech audio
-        // add audio to pc2 peer connection so the other client can hear them
-
-        // outgoingStream
-        //   .getTracks()
-        //   .forEach((track) => pc2.addTrack(track, outgoingStream));
-      };
-
-      // When this peer connection generates ICE candidates (network info)
-      pc.onicecandidate = (e) => {
-        if (e.candidate) {
-          // Send ICE candidates back to the client via signaling server
-          signaling.send(
-            JSON.stringify({
-              type: "ice-candidate",
-              candidate: e.candidate,
-              from: "translation-server",
-              to: from, // send to the correct client
+          // Polly synth
+          const voice = targetLangCode === "es" ? "Lucia" : "Joanna";
+          const synth = await pollyClient.send(
+            new SynthesizeSpeechCommand({
+              OutputFormat: "pcm",
+              Text: translatedText,
+              VoiceId: voice,
+              SampleRate: "16000",
             })
           );
+
+          // normalize AudioStream -> buffer
+          const audioBuf = await streamToBuffer(synth.AudioStream);
+          if (!audioBuf || audioBuf.length === 0) continue;
+
+          // find audioSource for client
+          const audioSource = audioSources.get(clientId);
+          if (!audioSource) {
+            console.warn("No audioSource for client:", clientId);
+            continue;
+          }
+
+          // Feed the buffer to the audioSource in 320-byte frames
+          feedAudioBufferToSource(audioSource, audioBuf);
         }
-      };
-
-      // Set the remote description using the client's offer
-      // This tells WebRTC what the client wants to send/receive
-      await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }));
-
-      // Create our answer SDP (describes what the translation server can send/receive)
-      const answer = await pc.createAnswer();
-
-      // Set the answer as our local description (required before sending it back)
-      await pc.setLocalDescription(answer);
-
-      // Send the SDP answer back to the client via signaling server
-      signaling.send(
-        JSON.stringify({
-          type: "answer",
-          sdp: answer.sdp,
-          from: "translation-server",
-          to: from,
-        })
-      );
-      console.log(`Sent answer to ${from}`);
+      }
     }
-    // If the client sends us an ICE candidate, add it to the peer connection
-    else if (type === "ice-candidate") {
-      const pc = pcs.get(from);
-      if (pc && candidate) pc.addIceCandidate(candidate);
-    }
-  });
+  }
+}
 
-  // If the signaling connection closes unexpectedly, attempt to reconnect
-  signaling.on("close", () => {
-    console.warn("⚠️ Signaling connection closed. Attempting to reconnect...");
-
-    scheduleReconnect();
-  });
-
-  // Handle signaling connection errors
-  signaling.on("error", (err) => {
-    console.error("❌ Signaling error:", err.message);
-    signaling.close(); // Trigger close event to handle reconnect logic
-  });
-};
-
-/**
- * Schedules a reconnection attempt using exponential backoff.
- * Example delays: 1s, 2s, 4s, 8s, 16s, up to 30s max.
- */
-const scheduleReconnect = () => {
-  // Avoid duplicate reconnect timers
-  if (reconnectTimeout) return;
-
-  // Exponential backoff delay, capped at 30 seconds
-  const delay = Math.min(30000, 1000 * 2 ** reconnectAttempts);
-  console.log(`⏳ Reconnecting in ${delay / 1000}s...`);
-
-  // Schedule reconnect attempt
-  reconnectTimeout = setTimeout(() => {
-    reconnectTimeout = null; // Reset timer
-    reconnectAttempts += 1; // Increase backoff
-    connectSignaling(); // Try reconnecting
-  }, delay);
-};
-
-// Start the initial connection
+// start
 connectSignaling();
-
-// Time →
-// Client A                        Translation Server                        Client B
-// ------------------------------------------------------------------------------------------------
-// 1. Generate userId → v7()
-// 2. WS connect → send join { type: "join", from: userId }
-//                                    ← join received
-// 3. Optionally, set peerId manually
-// 4. Call peer → createOffer (video) ---------------------------->
-//                                    receiveOffer (video) -------------
-//                                    createAnswer (video) <------------
-// 5. ICE candidates (video) ------------------------------------>
-//                                    forward ICE candidate <------------
-// 6. Local audio tracks added to pcAudio
-// 7. Start translation (toggle button) → createOffer (audio) -->
-//                                    receiveOffer (audio) --------------
-//                                    setRemoteDescription, createAnswer <-
-//                                    send answer <---------------------
-//    [ERROR 1] If pcs.get(connections.get(from)) === undefined → No peer, return
-// 8. Client sends audio track → pcAudio.ontrack -------------->
-//                                    Translation Server receives track
-//                                    ↓
-//                                    RTCAudioSink captures PCM
-//                                    ↓
-//                                    Downsample → AudioStream → AWS Transcribe
-//                                    ↓
-//                                    Translate text → AWS Translate
-//                                    ↓
-//                                    Text → Polly → PCM audio
-//                                    ↓
-//    [ERROR 2] addTrack called twice on same RTCPeerConnection → Sender already exists
-//                                    ↓
-//                                    RTCAudioTrack added to pcClient
-// 9. ICE candidate exchange for audio -------------------------->
-// 10. Client receives remoteAudio track → remoteAudio.srcObject = stream
-//    [ERROR 3] On client pcAudio.ontrack may not be correctly set → Audio not heard
