@@ -187,7 +187,9 @@ const connectSignaling = () => {
   signaling.on("message", async (msg) => {
     const data = JSON.parse(msg);
     const { type, from, sdp, candidate, lang, to } = data;
-    console.log("On message", { type, from, to, lang });
+    console.log(
+      `On message type:${type}, from:${from}, to:${to}, lang:${lang}`
+    );
 
     // set the language in a map if it exists
     if (lang) {
@@ -198,12 +200,16 @@ const connectSignaling = () => {
       }
     }
 
+    if (type === "pairing") {
+      connections.set(from, to);
+      connections.set(to, from);
+    }
     // If a client wants to start a WebRTC connection, they send an "offer"
-    if (type === "offer") {
+    else if (type === "offer") {
       // || type === "answer") {
       // set the connections mapping
       // if (type === "answer") {
-      connections.set(from, to);
+      // connections.set(from, to);
       // } else {
       //   connections.set(to, from);
       // }
@@ -329,13 +335,19 @@ const connectSignaling = () => {
                       synthSpeechResponse.AudioStream
                     );
 
-                    // no peer no point
-                    // if (!pc2) {
-                    //   console.log("No peer, return");
-                    //   return;
-                    // }
-                    // send it to the client
-                    pc2?.addTrack(translatedSynthTrack);
+                    // get the peer this user is connected to
+                    const peer = connections.get(from);
+                    console.log("Peer of", from, "is", peer);
+
+                    if (peer) {
+                      // get peer's connection
+                      const peerConn = pcs.get(peer);
+
+                      console.log("Peer's conn?", !!peerConn);
+                      console.log("Synth track", !!translatedSynthTrack);
+                      // send audio to peer
+                      peerConn?.addTrack(translatedSynthTrack);
+                    }
                   }
                 }
               }
@@ -351,9 +363,6 @@ const connectSignaling = () => {
         // incomingStream.getAudioTracks().forEach((track) => {
         //   outgoingStream.addTrack(track);
         // });
-
-        // get the peer this user is connected to
-        //const pc2 = pcs.get(connections.get(from));
 
         // no peer connection then return
         //if (!pc2) return;

@@ -27,7 +27,6 @@ wss.on("connection", (ws) => {
             console.log("\t", key);
           }
           break;
-
         // when receiving these messages, find the target
         case "lang":
         case "offer":
@@ -36,8 +35,18 @@ wss.on("connection", (ws) => {
           const target = peers.get(to);
           if (target) target.send(JSON.stringify(data));
 
-          // if an answer, translation needs to know
-          // about relationship
+          // if an answer and we are joining two clients
+          // that are not the translation server
+          if (
+            type === "answer" &&
+            from !== "translation-server" &&
+            to !== "translation-server"
+          ) {
+            console.log("MATCH MAKING");
+            const ts = peers.get("translation-server");
+            if (!ts) return;
+            ts.send(JSON.stringify({ to, from, type: "pairing" }));
+          }
           // if (
           //   (type === "answer" || type === "offer") &&
           //   from !== "translation-server"
