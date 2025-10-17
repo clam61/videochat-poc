@@ -12,11 +12,11 @@ wss.on("connection", (ws) => {
   console.log("On connection");
   ws.on("message", (messageString) => {
     const msg = messageString.toString("utf8");
-    console.log("Received message as string", msg);
 
     try {
       const data = JSON.parse(msg);
       const { type, from, to, lang } = data;
+      console.log("Received message as string", { type, from, to });
 
       switch (type) {
         // when receiving a join message, add the user to the peers map
@@ -35,6 +35,17 @@ wss.on("connection", (ws) => {
           if (!to) return;
           const target = peers.get(to);
           if (target) target.send(JSON.stringify(data));
+
+          // if an answer, translation needs to know
+          // about relationship
+          // if (
+          //   (type === "answer" || type === "offer") &&
+          //   from !== "translation-server"
+          // ) {
+          //   const ts = peers.get("translation-server");
+          //   if (!ts) return;
+          //   ts.send(JSON.stringify(data));
+          // }
           break;
 
         case "ice-candidate":

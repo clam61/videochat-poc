@@ -13,17 +13,23 @@ export default function Home() {
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("en-US");
 
   const ws = useRef<WebSocket | null>(null);
-  const pcVideo = useRef<RTCPeerConnection | null>(null);
-  const pcAudio = useRef<RTCPeerConnection | null>(null);
+  const pcChat = useRef<RTCPeerConnection | null>(null);
+  const translatedAudio = useRef<RTCPeerConnection | null>(null);
 
   const localStream = useRef<MediaStream | null>(null);
   const localVideo = useRef<HTMLVideoElement | null>(null);
   const remoteVideo = useRef<HTMLVideoElement | null>(null);
   const remoteAudio = useRef<HTMLAudioElement | null>(null);
 
+  const random3Letter = () =>
+    Array.from({ length: 3 }, () =>
+      String.fromCharCode(65 + Math.floor(Math.random() * 26))
+    ).join("");
+
   // Generate random user ID
   useEffect(() => {
-    setUserId(v7());
+    //setUserId(v7());
+    setUserId(random3Letter());
   }, []);
 
   // Connect to signaling server
@@ -43,12 +49,13 @@ export default function Home() {
       const data = JSON.parse(event.data);
       const { type, from, sdp, candidate } = data;
 
+      console.log("Received message", { type, from });
       // Handle video offers/answers
       if (type === "offer" && from !== "translation-server") {
         console.log("📨 Received offer from peer:", from);
-        await pcVideo.current?.setRemoteDescription({ type: "offer", sdp });
-        const answer = await pcVideo.current?.createAnswer();
-        await pcVideo.current?.setLocalDescription(answer!);
+        await pcChat.current?.setRemoteDescription({ type: "offer", sdp });
+        const answer = await pcChat.current?.createAnswer();
+        await pcChat.current?.setLocalDescription(answer!);
         ws.current?.send(
           JSON.stringify({
             type: "answer",
@@ -59,21 +66,25 @@ export default function Home() {
           })
         );
       } else if (type === "answer") {
+        console.log("Received answer from", from);
         if (from === "translation-server") {
           // 🎤 Translation server answer
-          await pcAudio.current?.setRemoteDescription({ type: "answer", sdp });
+          await translatedAudio.current?.setRemoteDescription({
+            type: "answer",
+            sdp,
+          });
 
           // ✅ Optionally, disconnect from signaling if translation is established
           // if (ws.current && ws.current.readyState === WebSocket.OPEN) ws.current.close();
         } else {
-          await pcVideo.current?.setRemoteDescription({ type: "answer", sdp });
+          await pcChat.current?.setRemoteDescription({ type: "answer", sdp });
         }
       } else if (type === "ice-candidate") {
         // Handle ICE candidates for both video and audio
         if (from === "translation-server") {
-          await pcAudio.current?.addIceCandidate(candidate);
+          await translatedAudio.current?.addIceCandidate(candidate);
         } else {
-          await pcVideo.current?.addIceCandidate(candidate);
+          await pcChat.current?.addIceCandidate(candidate);
         }
       }
     };
@@ -85,6 +96,7 @@ export default function Home() {
   useEffect(() => {
     if (!userId) return;
 
+    console.log("Useeffect", userId, peerId);
     const initMedia = async () => {
       // Get local video/audio stream
       localStream.current = await navigator.mediaDevices.getUserMedia({
@@ -98,24 +110,35 @@ export default function Home() {
           autoGainControl: true,
         },
       });
+
+      // show your own video in the page
       if (localVideo.current && localStream.current)
         localVideo.current.srcObject = localStream.current;
 
       // --- Video PeerConnection ---
-      pcVideo.current = new RTCPeerConnection();
+      pcChat.current = new RTCPeerConnection();
 
-      // Add all local tracks to video peer connection
+      // Add all local video tracks to video peer connection chat
       localStream.current
-        .getTracks()
-        .forEach((t) => pcVideo.current?.addTrack(t, localStream.current!));
+        .getVideoTracks()
+        .forEach((t) => pcChat.current?.addTrack(t, localStream.current!));
+
+      // get the local audio tracks
+      const localAudioTracks = localStream.current.getAudioTracks();
+
+      // add a clone of all audio tracks to the peer connection chat
+      localAudioTracks.forEach((t) => {
+        console.log("Add audio track pchat");
+        pcChat.current?.addTrack(t.clone(), localStream.current!);
+      });
 
       // When remote track is received, set it to remoteVideo element
-      pcVideo.current.ontrack = (e) => {
+      pcChat.current.ontrack = (e) => {
         if (remoteVideo.current) remoteVideo.current.srcObject = e.streams[0];
       };
 
       // ICE candidate gathering for video
-      pcVideo.current.onicecandidate = (e) => {
+      pcChat.current.onicecandidate = (e) => {
         if (e.candidate && peerId) {
           ws.current?.send(
             JSON.stringify({
@@ -123,26 +146,30 @@ export default function Home() {
               candidate: e.candidate,
               from: userId,
               to: peerId,
+              lang: selectedLanguage,
             })
           );
         }
       };
 
       // --- Audio PeerConnection ---
-      pcAudio.current = new RTCPeerConnection();
+      translatedAudio.current = new RTCPeerConnection();
 
       // Add only audio tracks to audio peer connection (for translation server)
-      localStream.current
-        .getAudioTracks()
-        .forEach((t) => pcAudio.current?.addTrack(t, localStream.current!));
+      localAudioTracks.forEach((t) => {
+        console.log("add adio track to trans audo");
+        const tc = t.clone();
+        tc.enabled = false;
+        translatedAudio.current?.addTrack(tc, localStream.current!);
+      });
 
       // When remote track is received, set it to remoteAudio element
-      pcAudio.current.ontrack = (e) => {
+      translatedAudio.current.ontrack = (e) => {
         if (remoteAudio.current) remoteAudio.current.srcObject = e.streams[0];
       };
 
       // ICE candidate gathering for audio connection to translation server
-      pcAudio.current.onicecandidate = (e) => {
+      translatedAudio.current.onicecandidate = (e) => {
         if (!e.candidate || !ws.current) return;
 
         /*
@@ -169,46 +196,51 @@ export default function Home() {
               candidate: e.candidate,
               from: userId,
               to: "translation-server",
+              lang: selectedLanguage,
             })
           );
         }
       };
 
       // Create audio offer only if translation is active
-      if (isTranslationActive && pcAudio.current) {
-        const offerAudio = await pcAudio.current.createOffer();
-        await pcAudio.current.setLocalDescription(offerAudio);
 
-        /*
+      // create the offer
+      const offerAudio = await translatedAudio.current.createOffer();
+
+      // set the local description to start gathering ICE candidates and triggering
+      // pcAudio.onicecandidate callbacks
+      await translatedAudio.current.setLocalDescription(offerAudio);
+
+      /*
         The offerAudio contains an SDP (Session Description) describing:
         * Audio/video codecs
         * Media capabilities
         * A list of ICE candidates (possible addresses/ports to connect to)
         */
-        ws.current?.send(
-          JSON.stringify({
-            type: "offer",
-            sdp: offerAudio.sdp,
-            from: userId,
-            to: "translation-server",
-            lang: selectedLanguage,
-          })
-        );
-      }
+      console.log("Send offer to translation server");
+      ws.current?.send(
+        JSON.stringify({
+          type: "offer",
+          sdp: offerAudio.sdp,
+          from: userId,
+          to: "translation-server",
+          lang: selectedLanguage,
+        })
+      );
     };
 
     initMedia();
-  }, [userId, peerId, isTranslationActive]);
+  }, [userId, peerId]);
 
   // Call peer
   const callPeer = async () => {
-    if (!peerId || !pcVideo.current) return;
+    if (!peerId || !pcChat.current) return;
 
     console.log("📞 Calling peer:", peerId);
     setConnected(true);
 
-    const offer = await pcVideo.current.createOffer();
-    await pcVideo.current.setLocalDescription(offer);
+    const offer = await pcChat.current.createOffer();
+    await pcChat.current.setLocalDescription(offer);
 
     ws.current?.send(
       JSON.stringify({
@@ -231,6 +263,25 @@ export default function Home() {
       })
     );
   }, [selectedLanguage]);
+
+  // enable and disable
+  useEffect(() => {
+    if (translatedAudio.current) {
+      console.log("Set trans audio", isTranslationActive);
+      translatedAudio.current
+        .getSenders()
+        .forEach((s) => s.track && (s.track.enabled = isTranslationActive));
+    }
+
+    if (pcChat.current) {
+      console.log("Set pc chat audio", isTranslationActive);
+      pcChat.current.getSenders().forEach((s) => {
+        if (s.track?.kind === "audio") {
+          s.track.enabled = !isTranslationActive;
+        }
+      });
+    }
+  }, [isTranslationActive]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -300,15 +351,6 @@ export default function Home() {
         >
           {isTranslationActive ? "Stop Translation" : "Start Translation"}
         </button>
-      </div>
-
-      <p>
-        Your ID: <b>{userId}</b>
-      </p>
-
-      <div>
-        <h3>Translated Audio</h3>
-        <audio ref={remoteAudio} autoPlay controls />
       </div>
     </div>
   );

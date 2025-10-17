@@ -185,9 +185,9 @@ const connectSignaling = () => {
 
   // Handle messages from the signaling server (offers, ICE candidates, etc.)
   signaling.on("message", async (msg) => {
-    console.log("On message", msg.toString());
     const data = JSON.parse(msg);
-    const { type, from, sdp, candidate, lang } = data;
+    const { type, from, sdp, candidate, lang, to } = data;
+    console.log("On message", { type, from, to, lang });
 
     // set the language in a map if it exists
     if (lang) {
@@ -198,16 +198,17 @@ const connectSignaling = () => {
       }
     }
 
-    // if a client accepts a WebRTC connection, they send an "answer"
-    if (type === "answer") {
-      // add connections for fast querying
-      connections.set(from, to);
-      connections.set(to, from);
-    }
     // If a client wants to start a WebRTC connection, they send an "offer"
-    else if (type === "offer") {
+    if (type === "offer") {
+      // || type === "answer") {
+      // set the connections mapping
+      // if (type === "answer") {
+      connections.set(from, to);
+      // } else {
+      //   connections.set(to, from);
+      // }
+
       const audioLanguage = languages.get(from);
-      console.log(`Received offer from ${from} in ${audioLanguage}`);
 
       // Create a new peer connection for this client
       const pc = new RTCPeerConnection();
@@ -224,12 +225,6 @@ const connectSignaling = () => {
 
         // get the peer this user is connected to
         const pc2 = pcs.get(connections.get(from));
-
-        // no peer no point
-        if (!pc2) {
-          console.log("No peer, return");
-          return;
-        }
 
         const incomingStream = event.streams[0];
         const [audioTrack] = incomingStream.getAudioTracks();
@@ -334,8 +329,13 @@ const connectSignaling = () => {
                       synthSpeechResponse.AudioStream
                     );
 
+                    // no peer no point
+                    // if (!pc2) {
+                    //   console.log("No peer, return");
+                    //   return;
+                    // }
                     // send it to the client
-                    pc2.addTrack(translatedSynthTrack);
+                    pc2?.addTrack(translatedSynthTrack);
                   }
                 }
               }
