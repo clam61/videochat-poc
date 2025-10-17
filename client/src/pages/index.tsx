@@ -6,8 +6,7 @@ export default function Home() {
   const [userId, setUserId] = useState<string>("");
   const [peerId, setPeerId] = useState<string>("");
   const [connected, setConnected] = useState(false);
-  const [isTranslationActive, setIsTranslationActive] =
-    useState<boolean>(false);
+  const [isTranslationActive, setIsTranslationActive] = useState<boolean>(true);
 
   type Language = "es-MX" | "en-US";
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("en-US");
@@ -127,10 +126,11 @@ export default function Home() {
       const localAudioTracks = localStream.current.getAudioTracks();
 
       // add a clone of all audio tracks to the peer connection chat
-      localAudioTracks.forEach((t) => {
-        console.log("Add audio track pchat");
-        pcChat.current?.addTrack(t.clone(), localStream.current!);
-      });
+      // localAudioTracks.forEach((t) => {
+      //   console.log("Add audio track pchat");
+      //   pcChat.current?.addTrack(t.clone(), localStream.current!);
+
+      // });
 
       // When remote track is received, set it to remoteVideo element
       pcChat.current.ontrack = (e) => {
@@ -158,9 +158,10 @@ export default function Home() {
       // Add only audio tracks to audio peer connection (for translation server)
       localAudioTracks.forEach((t) => {
         console.log("add adio track to trans audo");
-        const tc = t.clone();
-        tc.enabled = false;
-        translatedAudio.current?.addTrack(tc, localStream.current!);
+        // const tc = t.clone();
+        // tc.enabled = false;
+        // translatedAudio.current?.addTrack(tc, localStream.current!);
+        translatedAudio.current?.addTrack(t, localStream.current!);
       });
 
       // When remote track is received, set it to remoteAudio element
@@ -264,24 +265,24 @@ export default function Home() {
     );
   }, [selectedLanguage]);
 
-  // enable and disable
-  useEffect(() => {
-    if (translatedAudio.current) {
-      console.log("Set trans audio", isTranslationActive);
-      translatedAudio.current
-        .getSenders()
-        .forEach((s) => s.track && (s.track.enabled = isTranslationActive));
-    }
+  // // enable and disable
+  // useEffect(() => {
+  //   if (translatedAudio.current) {
+  //     console.log("Set trans audio", isTranslationActive);
+  //     translatedAudio.current
+  //       .getSenders()
+  //       .forEach((s) => s.track && (s.track.enabled = isTranslationActive));
+  //   }
 
-    if (pcChat.current) {
-      console.log("Set pc chat audio", isTranslationActive);
-      pcChat.current.getSenders().forEach((s) => {
-        if (s.track?.kind === "audio") {
-          s.track.enabled = !isTranslationActive;
-        }
-      });
-    }
-  }, [isTranslationActive]);
+  //   if (pcChat.current) {
+  //     console.log("Set pc chat audio", isTranslationActive);
+  //     pcChat.current.getSenders().forEach((s) => {
+  //       if (s.track?.kind === "audio") {
+  //         s.track.enabled = !isTranslationActive;
+  //       }
+  //     });
+  //   }
+  // }, [isTranslationActive]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
