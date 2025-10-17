@@ -164,6 +164,10 @@ export default function Home() {
         translatedAudio.current?.addTrack(t, localStream.current!);
       });
 
+      translatedAudio.current.oniceconnectionstatechange = () => {
+        console.log("ICE state:", translatedAudio.current?.iceConnectionState);
+      };
+
       // When remote track is received, set it to remoteAudio element
       translatedAudio.current.ontrack = (e) => {
         if (remoteAudio.current) remoteAudio.current.srcObject = e.streams[0];
