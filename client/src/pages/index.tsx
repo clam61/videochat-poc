@@ -109,14 +109,22 @@ export default function Home() {
 
       translationConnection.current.oniceconnectionstatechange = () => {
         console.log(
-          "ICE state:",
+          "TRANSLATION ICE state:",
           translationConnection.current?.iceConnectionState
         );
       };
 
       // When remote track is received, set it to remoteAudio element
       translationConnection.current.ontrack = (e) => {
-        if (remoteAudio.current) remoteAudio.current.srcObject = e.streams[0];
+        console.log(
+          "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Received track from translation",
+          !!e.streams[0],
+          !!remoteAudio.current
+        );
+        if (remoteAudio.current) {
+          console.log("Setting remote audio****");
+          remoteAudio.current.srcObject = e.streams[0];
+        }
       };
 
       // ICE candidate gathering for audio connection to translation server
@@ -167,11 +175,18 @@ export default function Home() {
       await initMedia();
     };
 
+    ws.current.onclose = (event) => {
+      console.log("WebSocket closed");
+      console.log("Code:", event.code); // Close code (1000 = normal)
+      console.log("Reason:", event.reason); // Optional reason string
+      console.log("WasClean:", event.wasClean); // true if closed cleanly
+    };
+
     ws.current.onmessage = async (event) => {
       const data = JSON.parse(event.data);
       const { type, from, sdp, candidate } = data;
 
-      console.log("Received message", { type, from });
+      console.log("RECEIVED MESSAGE", { type, from });
       // Handle video offers/answers
       if (type === "offer" && from !== "translation-server") {
         console.log("📨 Received offer from peer:", from);
@@ -191,21 +206,25 @@ export default function Home() {
       } else if (type === "answer") {
         console.log("Received answer from", from);
         if (from === "translation-server") {
+          console.log(
+            "Received answer from TRANSLATION server, setting remote desc",
+            sdp
+          );
           // 🎤 Translation server answer
           await translationConnection.current?.setRemoteDescription({
             type: "answer",
             sdp,
           });
-
-          // ✅ Optionally, disconnect from signaling if translation is established
-          // if (ws.current && ws.current.readyState === WebSocket.OPEN) ws.current.close();
         } else {
           await pcChat.current?.setRemoteDescription({ type: "answer", sdp });
         }
       } else if (type === "ice-candidate") {
         // Handle ICE candidates for both video and audio
         if (from === "translation-server") {
-          console.log("Received candidate from translation server", candidate);
+          console.log(
+            "Received candidate from translation server",
+            !!candidate
+          );
           await translationConnection.current?.addIceCandidate(candidate);
         } else {
           await pcChat.current?.addIceCandidate(candidate);
@@ -322,7 +341,7 @@ export default function Home() {
             //  Media capabilities
             //  A list of ICE candidates (possible addresses/ports to connect to)
 
-            console.log("Send offer to translation server");
+            console.log("Send offer to translation server", offerAudio.sdp);
             ws.current?.send(
               JSON.stringify({
                 type: "offer",
@@ -390,7 +409,7 @@ export default function Home() {
           }
         >
           <option value="en-US">en-US</option>
-          <option value="es-MX">es-MX</option>
+          <option value="es-ES">es-ES</option>
           <option value="ko-KR">ko-KR</option>
           <option value="ru-RU">ru-RU</option>
           <option value="zh-HK">zh-HK</option>
