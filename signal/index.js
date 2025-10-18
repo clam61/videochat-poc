@@ -73,7 +73,10 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     for (const [id, socket] of peers.entries()) {
-      if (socket === ws) peers.delete(id);
+      if (socket === ws) {
+        console.log("Deleting one ws from map");
+        peers.delete(id);
+      }
     }
   });
 });
