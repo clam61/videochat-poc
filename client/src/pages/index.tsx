@@ -95,7 +95,8 @@ export default function Home() {
 
   // Initialize local media and peer connections
   useEffect(() => {
-    if (!userId) return;
+    console.log(userId, peerId, connected);
+    if (!userId || peerId?.length != 3) return;
 
     console.log("Useeffect", userId, peerId);
     const initMedia = async () => {
@@ -184,19 +185,18 @@ export default function Home() {
       translationConnection.current.onicecandidate = (e) => {
         if (!e.candidate || !ws.current) return;
 
-        /*
-        What an ICE candidate actually is
-        An ICE candidate is essentially:
-        (IP address, port, transport protocol, type)
-        
-        Where:
-        IP address & port → a possible address your peer can reach you at
-        Transport protocol → usually UDP, sometimes TCP
-        Type → how the address was discovered:
-        host → your local LAN address
-        srflx → your public IP discovered via STUN server
-        relay → a TURN server relay address
-        */
+        // What an ICE candidate actually is
+        // An ICE candidate is essentially:
+        // (IP address, port, transport protocol, type)
+
+        // Where:
+        // IP address & port → a possible address your peer can reach you at
+        // Transport protocol → usually UDP, sometimes TCP
+        // Type → how the address was discovered:
+        // host → your local LAN address
+        // srflx → your public IP discovered via STUN server
+        // relay → a TURN server relay address
+
         if (ws.current.readyState === WebSocket.OPEN) {
           console.log(
             "Sending ICE candidate to translation server",
@@ -215,8 +215,6 @@ export default function Home() {
         }
       };
 
-      // Create audio offer only if translation is active
-
       // create the offer
       const offerAudio = await translationConnection.current.createOffer();
 
@@ -224,12 +222,11 @@ export default function Home() {
       // pcAudio.onicecandidate callbacks
       await translationConnection.current.setLocalDescription(offerAudio);
 
-      /*
-        The offerAudio contains an SDP (Session Description) describing:
-        * Audio/video codecs
-        * Media capabilities
-        * A list of ICE candidates (possible addresses/ports to connect to)
-        */
+      //   The offerAudio contains an SDP (Session Description) describing:
+      //  Audio/video codecs
+      //  Media capabilities
+      //  A list of ICE candidates (possible addresses/ports to connect to)
+
       console.log("Send offer to translation server");
       ws.current?.send(
         JSON.stringify({
