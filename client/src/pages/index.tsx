@@ -41,6 +41,7 @@ export default function Home() {
 
     ws.current.onopen = () => {
       // ✅ Connected to signaling server, sending join message
+      console.log("send join");
       ws.current?.send(JSON.stringify({ type: "join", from: userId }));
     };
 
@@ -55,6 +56,7 @@ export default function Home() {
         await pcChat.current?.setRemoteDescription({ type: "offer", sdp });
         const answer = await pcChat.current?.createAnswer();
         await pcChat.current?.setLocalDescription(answer!);
+        console.log("send answer to", from);
         ws.current?.send(
           JSON.stringify({
             type: "answer",
@@ -139,7 +141,9 @@ export default function Home() {
 
       // ICE candidate gathering for video
       pcChat.current.onicecandidate = (e) => {
+        console.log("onicecandidate fired");
         if (e.candidate && peerId) {
+          console.log("send ice candidate to", peerId);
           ws.current?.send(
             JSON.stringify({
               type: "ice-candidate",
@@ -198,6 +202,7 @@ export default function Home() {
             "Sending ICE candidate to translation server",
             e.candidate
           );
+          console.log("send ice cand to trans");
           ws.current.send(
             JSON.stringify({
               type: "ice-candidate",
@@ -249,7 +254,7 @@ export default function Home() {
 
     const offer = await pcChat.current.createOffer();
     await pcChat.current.setLocalDescription(offer);
-
+    console.log("send offer to", peerId);
     ws.current?.send(
       JSON.stringify({
         type: "offer",
@@ -262,6 +267,7 @@ export default function Home() {
   };
 
   useEffect(() => {
+    console.log("send lang to trans");
     ws.current?.send(
       JSON.stringify({
         type: "lang",
