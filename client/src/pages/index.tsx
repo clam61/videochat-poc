@@ -6,6 +6,7 @@ export default function Home() {
   const [userId, setUserId] = useState<string>("");
   const [connected, setConnected] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
+  const [startedCall, setStartedCall] = useState(false);
   const [isTranslationActive, setIsTranslationActive] = useState<boolean>(true);
 
   type Language = "es-MX" | "en-US";
@@ -307,6 +308,7 @@ export default function Home() {
           onClick={async () => {
             if (!translationConnection.current) return;
 
+            setStartedCall(true);
             // create the offer
             const offerAudio =
               await translationConnection.current.createOffer();
@@ -331,7 +333,7 @@ export default function Home() {
               })
             );
           }}
-          disabled={!wsConnected}
+          disabled={!wsConnected || startedCall}
         >
           Start Call
         </button>
@@ -389,6 +391,10 @@ export default function Home() {
         >
           <option value="en-US">en-US</option>
           <option value="es-MX">es-MX</option>
+          <option value="ko-KR">ko-KR</option>
+          <option value="ru-RU">ru-RU</option>
+          <option value="zh-HK">zh-HK</option>
+          <option value="zh-CN">zh-CN</option>
         </select>
 
         <button

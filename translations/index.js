@@ -231,10 +231,16 @@ const connectSignaling = () => {
       const audioLanguage = languages.get(from);
 
       // Create a new peer connection for this peer
-      const pc = new RTCPeerConnection();
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
 
       // Store it in the map so we can reference it later (e.g., for ICE candidates)
       pcs.set(from, pc);
+
+      pc.onicegatheringstatechange = () => {
+        console.log("ICE gathering state:", pc.iceGatheringState);
+      };
 
       pc.onconnectionstatechange = () => {
         console.log("Connection state:", pc.connectionState);
@@ -446,6 +452,7 @@ const connectSignaling = () => {
       // When this peer connection generates ICE candidates (network info)
       pc.onicecandidate = (e) => {
         if (e.candidate) {
+          console.log("Got ICE candidate", e.candidate);
           // Send ICE candidates back to the client via signaling server
           signaling.send(
             JSON.stringify({
