@@ -116,15 +116,21 @@ export default function Home() {
 
       // When remote track is received, set it to remoteAudio element
       translationConnection.current.ontrack = (e) => {
-        console.log(
-          "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Received track from translation",
-          !!e.streams[0],
-          !!remoteAudio.current
-        );
+        const remoteAudioStream = new MediaStream();
+        remoteAudioStream.addTrack(e.track);
         if (remoteAudio.current) {
-          console.log("Setting remote audio****");
-          remoteAudio.current.srcObject = e.streams[0];
+          remoteAudio.current.srcObject = remoteAudioStream;
         }
+        // console.log(
+        //   "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Received track from translation",
+        //   e.track,
+        //   !!e.streams[0],
+        //   !!remoteAudio.current
+        // );
+        // if (remoteAudio.current) {
+        //   console.log("Setting remote audio****");
+        //   remoteAudio.current.srcObject = e.streams[0];
+        // }
       };
 
       // ICE candidate gathering for audio connection to translation server

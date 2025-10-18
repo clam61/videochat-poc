@@ -6,7 +6,7 @@ const port = process.env.PORT || 10000;
 console.log({ port });
 
 const wss = new WebSocketServer({ port });
-const peers = new Map();
+const webSockets = new Map();
 
 wss.on("connection", (ws) => {
   console.log("On connection");
@@ -21,18 +21,18 @@ wss.on("connection", (ws) => {
       switch (type) {
         // when receiving a join message, add the user to the peers map
         case "join":
-          peers.set(from, ws);
-          console.log(`Peer joined: ${from}`);
-          for (const key of peers.keys()) {
-            console.log("\t", key);
-          }
+          webSockets.set(from, ws);
+          // console.log(`Peer joined: ${from}`);
+          // for (const key of webSockets.keys()) {
+          //   console.log("\t", key);
+          // }
           break;
         // when receiving these messages, find the target
         case "lang":
         case "offer":
         case "answer":
           if (!to) return;
-          const target = peers.get(to);
+          const target = webSockets.get(to);
           if (target) target.send(JSON.stringify(data));
 
           // if an answer and we are joining two clients
@@ -43,7 +43,7 @@ wss.on("connection", (ws) => {
             to !== "translation-server"
           ) {
             console.log("MATCH MAKING");
-            const ts = peers.get("translation-server");
+            const ts = webSockets.get("translation-server");
             if (!ts) return;
             ts.send(JSON.stringify({ to, from, type: "pairing" }));
           }
@@ -58,9 +58,16 @@ wss.on("connection", (ws) => {
           break;
 
         case "ice-candidate":
-          if (!to) return;
-          const targetCandidate = peers.get(to);
-          if (targetCandidate) targetCandidate.send(JSON.stringify(data));
+          if (!to) {
+            console.log("ice-candidate without to, not sending");
+            return;
+          }
+          const webSocket = webSockets.get(to);
+          if (webSocket) {
+            console.log("SENDING MESSAGE CE", JSON.stringify(data));
+            webSocket.send(JSON.stringify(data));
+          } else
+            console.log("Cant find websocket for ice-candidate message", to);
           break;
 
         default:
@@ -72,10 +79,10 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    for (const [id, socket] of peers.entries()) {
+    for (const [id, socket] of webSockets.entries()) {
       if (socket === ws) {
         console.log("Deleting one ws from map");
-        peers.delete(id);
+        webSockets.delete(id);
       }
     }
   });
