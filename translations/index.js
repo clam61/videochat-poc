@@ -165,9 +165,9 @@ const connectSignaling = () => {
     if (lang) {
       languages.set(from, lang);
 
-      for (const [key, value] of languages) {
-        console.log("\t", key, "-", value);
-      }
+      // for (const [key, value] of languages) {
+      //   console.log("\t", key, "-", value);
+      // }
     }
 
     if (type === "pairing") {
