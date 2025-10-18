@@ -204,6 +204,7 @@ export default function Home() {
       } else if (type === "ice-candidate") {
         // Handle ICE candidates for both video and audio
         if (from === "translation-server") {
+          console.log("Received candidate from translation server", candidate);
           await translationConnection.current?.addIceCandidate(candidate);
         } else {
           await pcChat.current?.addIceCandidate(candidate);
