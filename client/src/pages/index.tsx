@@ -13,7 +13,7 @@ export default function Home() {
 
   const ws = useRef<WebSocket | null>(null);
   const pcChat = useRef<RTCPeerConnection | null>(null);
-  const translatedAudio = useRef<RTCPeerConnection | null>(null);
+  const translationConnection = useRef<RTCPeerConnection | null>(null);
 
   const localStream = useRef<MediaStream | null>(null);
   const localVideo = useRef<HTMLVideoElement | null>(null);
@@ -68,7 +68,7 @@ export default function Home() {
         console.log("Received answer from", from);
         if (from === "translation-server") {
           // 🎤 Translation server answer
-          await translatedAudio.current?.setRemoteDescription({
+          await translationConnection.current?.setRemoteDescription({
             type: "answer",
             sdp,
           });
@@ -81,7 +81,7 @@ export default function Home() {
       } else if (type === "ice-candidate") {
         // Handle ICE candidates for both video and audio
         if (from === "translation-server") {
-          await translatedAudio.current?.addIceCandidate(candidate);
+          await translationConnection.current?.addIceCandidate(candidate);
         } else {
           await pcChat.current?.addIceCandidate(candidate);
         }
@@ -153,7 +153,7 @@ export default function Home() {
       };
 
       // --- Audio PeerConnection ---
-      translatedAudio.current = new RTCPeerConnection();
+      translationConnection.current = new RTCPeerConnection();
 
       // Add only audio tracks to audio peer connection (for translation server)
       localAudioTracks.forEach((t) => {
@@ -161,20 +161,23 @@ export default function Home() {
         // const tc = t.clone();
         // tc.enabled = false;
         // translatedAudio.current?.addTrack(tc, localStream.current!);
-        translatedAudio.current?.addTrack(t, localStream.current!);
+        translationConnection.current?.addTrack(t, localStream.current!);
       });
 
-      translatedAudio.current.oniceconnectionstatechange = () => {
-        console.log("ICE state:", translatedAudio.current?.iceConnectionState);
+      translationConnection.current.oniceconnectionstatechange = () => {
+        console.log(
+          "ICE state:",
+          translationConnection.current?.iceConnectionState
+        );
       };
 
       // When remote track is received, set it to remoteAudio element
-      translatedAudio.current.ontrack = (e) => {
+      translationConnection.current.ontrack = (e) => {
         if (remoteAudio.current) remoteAudio.current.srcObject = e.streams[0];
       };
 
       // ICE candidate gathering for audio connection to translation server
-      translatedAudio.current.onicecandidate = (e) => {
+      translationConnection.current.onicecandidate = (e) => {
         if (!e.candidate || !ws.current) return;
 
         /*
@@ -210,11 +213,11 @@ export default function Home() {
       // Create audio offer only if translation is active
 
       // create the offer
-      const offerAudio = await translatedAudio.current.createOffer();
+      const offerAudio = await translationConnection.current.createOffer();
 
       // set the local description to start gathering ICE candidates and triggering
       // pcAudio.onicecandidate callbacks
-      await translatedAudio.current.setLocalDescription(offerAudio);
+      await translationConnection.current.setLocalDescription(offerAudio);
 
       /*
         The offerAudio contains an SDP (Session Description) describing:
@@ -345,7 +348,7 @@ export default function Home() {
           }
         >
           <option value="en-US">en-US</option>
-          <option value="en-MX">es-MX</option>
+          <option value="es-MX">es-MX</option>
         </select>
 
         <button
@@ -356,6 +359,11 @@ export default function Home() {
         >
           {isTranslationActive ? "Stop Translation" : "Start Translation"}
         </button>
+      </div>
+
+      <div>
+        <h3>Translated Audio</h3>
+        <audio ref={remoteAudio} autoPlay controls />
       </div>
     </div>
   );
