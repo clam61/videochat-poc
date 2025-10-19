@@ -489,9 +489,14 @@ const connectSignaling = () => {
               }
             })(),
           });
+          // find a wau to send dummy data
 
+          //           const silence = Buffer.alloc(320 * 2); // 20ms of silence @16kHz mono
+          // if (Date.now() - lastAudioTime > 5000) {
+          //   transcribeStream.sendAudioEvent({ AudioChunk: silence });
+          // }
           while (true) {
-            console.log("Transcribe loop begin....");
+            console.log(from, "Transcribe loop begin....");
             try {
               const response = await transcribeClient.send(command);
               for await (const event of response.TranscriptResultStream) {
@@ -532,10 +537,24 @@ const connectSignaling = () => {
                         textToSynth = response.TranslatedText;
                       }
 
+                      let voiceId;
+
+                      if (targetLanguage === "es-US") {
+                        voiceId = "Lupe";
+                      } else if (targetLanguage === "en-US") {
+                        voiceId = "Joanna";
+                      } else if (targetLanguage === "ru-RU") {
+                        voiceId = "Tatyana";
+                      } else if (targetLanguage === "ko-KR") {
+                        voiceId = "Seoyeon";
+                      } else {
+                        voiceId = "Joanna";
+                      }
+
                       // now convert to audio
                       const synthSpeechCommand = new SynthesizeSpeechCommand({
                         OutputFormat: "pcm", // PCM audio suitable for streaming over WebRTC
-                        VoiceId: "Joanna", // Spanish voice
+                        VoiceId: voiceId,
                         SampleRate: "16000",
                         LanguageCode: targetLanguage,
                         Text: textToSynth,
@@ -595,7 +614,7 @@ const connectSignaling = () => {
                 }
               }
             } catch (err) {
-              console.error("Transcribe error:", err);
+              console.error(from, "Transcribe error:", err);
             }
           }
         };

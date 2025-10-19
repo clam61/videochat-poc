@@ -8,7 +8,7 @@ export default function Home() {
   const [wsConnected, setWsConnected] = useState(false);
   const [startedCall, setStartedCall] = useState(false);
 
-  type Language = "es-MX" | "en-US";
+  type Language = "es-US" | "en-US" | "ko-KR" | "ru-RU";
 
   const ws = useRef<WebSocket | null>(null);
   const pcChat = useRef<RTCPeerConnection | null>(null);
@@ -338,7 +338,7 @@ export default function Home() {
             }}
           >
             <option value="en-US">en-US</option>
-            <option value="es-ES">es-ES</option>
+            <option value="es-US">es-US</option>
             <option value="ko-KR">ko-KR</option>
             <option value="ru-RU">ru-RU</option>
             <option value="zh-HK">zh-HK</option>
