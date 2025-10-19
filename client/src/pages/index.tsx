@@ -10,13 +10,14 @@ export default function Home() {
   const [isTranslationActive, setIsTranslationActive] = useState<boolean>(true);
 
   type Language = "es-MX" | "en-US";
-  const [selectedLanguage, setSelectedLanguage] = useState<Language>("en-US");
+  //const [selectedLanguage, setSelectedLanguage] = useState<Language>("en-US");
 
   const ws = useRef<WebSocket | null>(null);
   const pcChat = useRef<RTCPeerConnection | null>(null);
   const translationConnection = useRef<RTCPeerConnection | null>(null);
 
   const peerId = useRef<string | null>(null);
+  const selectedLanguage = useRef<string>("en-US");
   const localStream = useRef<MediaStream | null>(null);
   const localVideo = useRef<HTMLVideoElement | null>(null);
   const remoteVideo = useRef<HTMLVideoElement | null>(null);
@@ -89,7 +90,7 @@ export default function Home() {
               candidate: e.candidate,
               from: userId,
               to: peerId.current,
-              lang: selectedLanguage,
+              lang: selectedLanguage.current,
             })
           );
         }
@@ -161,7 +162,7 @@ export default function Home() {
               candidate: e.candidate,
               from: userId,
               to: "translation-server",
-              lang: selectedLanguage,
+              lang: selectedLanguage.current,
             })
           );
         }
@@ -206,7 +207,7 @@ export default function Home() {
             sdp: answer?.sdp,
             from: userId,
             to: from,
-            lang: selectedLanguage,
+            lang: selectedLanguage.current,
           })
         );
       } else if (type === "answer") {
@@ -268,7 +269,7 @@ export default function Home() {
         sdp: offerAudio.sdp,
         from: userId,
         to: "translation-server",
-        lang: selectedLanguage,
+        lang: selectedLanguage.current,
       })
     );
     ////// end repeat code for trans serer
@@ -284,7 +285,7 @@ export default function Home() {
         sdp: offer.sdp,
         from: userId,
         to: peerId.current,
-        lang: selectedLanguage,
+        lang: selectedLanguage.current,
       })
     );
   };
@@ -296,10 +297,10 @@ export default function Home() {
         type: "lang",
         from: userId,
         to: "translation-server",
-        lang: selectedLanguage,
+        lang: selectedLanguage.current,
       })
     );
-  }, [selectedLanguage]);
+  }, [selectedLanguage.current]);
 
   // // enable and disable
   // useEffect(() => {
@@ -354,7 +355,7 @@ export default function Home() {
                 sdp: offerAudio.sdp,
                 from: userId,
                 to: "translation-server",
-                lang: selectedLanguage,
+                lang: selectedLanguage.current,
               })
             );
           }}
@@ -407,11 +408,10 @@ export default function Home() {
       <div className="flex gap-2">
         <select
           className="border border-gray-300 bg-white text-gray-900 px-3 py-2 rounded-md appearance-none"
-          value={selectedLanguage}
+          value={selectedLanguage.current}
           onChange={(e) =>
-            setSelectedLanguage(
-              e.target.options[e.target.selectedIndex].value as Language
-            )
+            (selectedLanguage.current = e.target.options[e.target.selectedIndex]
+              .value as Language)
           }
         >
           <option value="en-US">en-US</option>
