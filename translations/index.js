@@ -490,114 +490,117 @@ const connectSignaling = () => {
             })(),
           });
 
-          try {
-            const response = await transcribeClient.send(command);
-            for await (const event of response.TranscriptResultStream) {
-              if (event.TranscriptEvent) {
-                const results = event.TranscriptEvent.Transcript.Results;
-                for (const result of results) {
-                  // if the result is final
-                  if (!result.IsPartial) {
-                    // now translate to the target language
-                    const transcript = result.Alternatives[0].Transcript;
-                    console.log(
-                      from,
-                      "*** Final transcript:",
-                      sourceLanguage,
-                      transcript
-                    );
-
-                    let textToSynth;
-                    if (sourceLanguage === targetLanguage) {
-                      textToSynth = transcript;
-                    } else {
-                      const command = new TranslateTextCommand({
-                        Text: transcript,
-                        SourceLanguageCode: sourceLanguage.split("-")[0],
-                        TargetLanguageCode: targetLanguage.split("-")[0],
-                      });
-
-                      const response = await translateClient.send(command);
-
+          while (true) {
+            console.log("Transcribe loop begin....");
+            try {
+              const response = await transcribeClient.send(command);
+              for await (const event of response.TranscriptResultStream) {
+                if (event.TranscriptEvent) {
+                  const results = event.TranscriptEvent.Transcript.Results;
+                  for (const result of results) {
+                    // if the result is final
+                    if (!result.IsPartial) {
+                      // now translate to the target language
+                      const transcript = result.Alternatives[0].Transcript;
                       console.log(
                         from,
-                        "***    ↳ Translated:",
+                        "*** Final transcript:",
                         sourceLanguage,
-                        " -> ",
-                        targetLanguage,
-                        response.TranslatedText
+                        transcript
                       );
-                      textToSynth = response.TranslatedText;
-                    }
 
-                    // now convert to audio
-                    const synthSpeechCommand = new SynthesizeSpeechCommand({
-                      OutputFormat: "pcm", // PCM audio suitable for streaming over WebRTC
-                      VoiceId: "Joanna", // Spanish voice
-                      SampleRate: "16000",
-                      LanguageCode: targetLanguage,
-                      Text: textToSynth,
-                    });
-
-                    const synthSpeechResponse = await pollyClient.send(
-                      synthSpeechCommand
-                    );
-
-                    console.log(from, "***      ↳ Got synth voice response");
-
-                    const CHUNK_FRAMES = 160; // 10ms @ 16kHz
-                    const BYTES_PER_SAMPLE = 2;
-                    let leftover = new Int16Array(0);
-
-                    synthSpeechResponse.AudioStream.on("data", (chunk) => {
-                      const sampleCount = chunk.length / BYTES_PER_SAMPLE;
-                      const newSamples = new Int16Array(sampleCount);
-
-                      for (let i = 0; i < sampleCount; i++) {
-                        newSamples[i] = chunk.readInt16LE(i * BYTES_PER_SAMPLE);
-                      }
-
-                      // Combine with leftover
-                      const allSamples = new Int16Array(
-                        leftover.length + newSamples.length
-                      );
-                      allSamples.set(leftover, 0);
-                      allSamples.set(newSamples, leftover.length);
-
-                      let offset = 0;
-                      while (offset + CHUNK_FRAMES <= allSamples.length) {
-                        // Copy the chunk into a new Int16Array (important!)
-                        const frameSamples = new Int16Array(CHUNK_FRAMES);
-                        frameSamples.set(
-                          allSamples.subarray(offset, offset + CHUNK_FRAMES)
-                        );
-
-                        pc2Source.onData({
-                          samples: frameSamples,
-                          sampleRate: 16000,
-                          bitsPerSample: 16,
-                          channelCount: 1,
-                          numberOfFrames: CHUNK_FRAMES,
+                      let textToSynth;
+                      if (sourceLanguage === targetLanguage) {
+                        textToSynth = transcript;
+                      } else {
+                        const command = new TranslateTextCommand({
+                          Text: transcript,
+                          SourceLanguageCode: sourceLanguage.split("-")[0],
+                          TargetLanguageCode: targetLanguage.split("-")[0],
                         });
 
-                        offset += CHUNK_FRAMES;
+                        const response = await translateClient.send(command);
+
+                        console.log(
+                          from,
+                          "***    ↳ Translated:",
+                          sourceLanguage,
+                          " -> ",
+                          targetLanguage,
+                          response.TranslatedText
+                        );
+                        textToSynth = response.TranslatedText;
                       }
 
-                      // Save leftover
-                      leftover = allSamples.subarray(offset);
-                    });
+                      // now convert to audio
+                      const synthSpeechCommand = new SynthesizeSpeechCommand({
+                        OutputFormat: "pcm", // PCM audio suitable for streaming over WebRTC
+                        VoiceId: "Joanna", // Spanish voice
+                        SampleRate: "16000",
+                        LanguageCode: targetLanguage,
+                        Text: textToSynth,
+                      });
+
+                      const synthSpeechResponse = await pollyClient.send(
+                        synthSpeechCommand
+                      );
+
+                      console.log(from, "***      ↳ Got synth voice response");
+
+                      const CHUNK_FRAMES = 160; // 10ms @ 16kHz
+                      const BYTES_PER_SAMPLE = 2;
+                      let leftover = new Int16Array(0);
+
+                      synthSpeechResponse.AudioStream.on("data", (chunk) => {
+                        const sampleCount = chunk.length / BYTES_PER_SAMPLE;
+                        const newSamples = new Int16Array(sampleCount);
+
+                        for (let i = 0; i < sampleCount; i++) {
+                          newSamples[i] = chunk.readInt16LE(
+                            i * BYTES_PER_SAMPLE
+                          );
+                        }
+
+                        // Combine with leftover
+                        const allSamples = new Int16Array(
+                          leftover.length + newSamples.length
+                        );
+                        allSamples.set(leftover, 0);
+                        allSamples.set(newSamples, leftover.length);
+
+                        let offset = 0;
+                        while (offset + CHUNK_FRAMES <= allSamples.length) {
+                          // Copy the chunk into a new Int16Array (important!)
+                          const frameSamples = new Int16Array(CHUNK_FRAMES);
+                          frameSamples.set(
+                            allSamples.subarray(offset, offset + CHUNK_FRAMES)
+                          );
+
+                          pc2Source.onData({
+                            samples: frameSamples,
+                            sampleRate: 16000,
+                            bitsPerSample: 16,
+                            channelCount: 1,
+                            numberOfFrames: CHUNK_FRAMES,
+                          });
+
+                          offset += CHUNK_FRAMES;
+                        }
+
+                        // Save leftover
+                        leftover = allSamples.subarray(offset);
+                      });
+                    }
                   }
                 }
               }
+            } catch (err) {
+              console.error("Transcribe error:", err);
             }
-          } catch (err) {
-            console.error("Transcribe error:", err);
           }
         };
 
         startAwsTranscribe(downsampledAudioStream);
-
-        console.log(from, "ontrack fin");
       };
 
       // When this peer connection generates ICE candidates (network info)

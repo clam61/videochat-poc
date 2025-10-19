@@ -7,10 +7,8 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [startedCall, setStartedCall] = useState(false);
-  const [isTranslationActive, setIsTranslationActive] = useState<boolean>(true);
 
   type Language = "es-MX" | "en-US";
-  //const [selectedLanguage, setSelectedLanguage] = useState<Language>("en-US");
 
   const ws = useRef<WebSocket | null>(null);
   const pcChat = useRef<RTCPeerConnection | null>(null);
@@ -290,17 +288,17 @@ export default function Home() {
     );
   };
 
-  useEffect(() => {
-    console.log("send lang to trans");
-    ws.current?.send(
-      JSON.stringify({
-        type: "lang",
-        from: userId,
-        to: "translation-server",
-        lang: selectedLanguage.current,
-      })
-    );
-  }, [selectedLanguage.current]);
+  // useEffect(() => {
+  //   console.log("send lang to trans");
+  //   ws.current?.send(
+  //     JSON.stringify({
+  //       type: "lang",
+  //       from: userId,
+  //       to: "translation-server",
+  //       lang: selectedLanguage.current,
+  //     })
+  //   );
+  // }, [selectedLanguage.current]);
 
   // // enable and disable
   // useEffect(() => {
@@ -325,9 +323,30 @@ export default function Home() {
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <h1>🎥 P2P Video + 🎧 Translation Hybrid</h1>
 
-      <div>
-        My user ID: <code>{userId}</code>
+      <div className="flex gap-4 items-center">
+        <div>
+          My user ID: <code>{userId}</code>
+        </div>
+        <div>
+          <select
+            disabled={!wsConnected || startedCall}
+            className="disabled:opacity-70 disabled:bg-gray-100 border border-gray-300 bg-white text-gray-900 px-3 py-2 rounded-md appearance-none"
+            onChange={(e) => {
+              selectedLanguage.current = e.target.options[
+                e.target.selectedIndex
+              ].value as Language;
+            }}
+          >
+            <option value="en-US">en-US</option>
+            <option value="es-ES">es-ES</option>
+            <option value="ko-KR">ko-KR</option>
+            <option value="ru-RU">ru-RU</option>
+            <option value="zh-HK">zh-HK</option>
+            <option value="zh-CN">zh-CN</option>
+          </select>
+        </div>
       </div>
+
       <div>
         <button
           className="disabled:bg-gray-400 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -404,37 +423,8 @@ export default function Home() {
           />
         </div>
       </div>
-
-      <div className="flex gap-2">
-        <select
-          className="border border-gray-300 bg-white text-gray-900 px-3 py-2 rounded-md appearance-none"
-          value={selectedLanguage.current}
-          onChange={(e) =>
-            (selectedLanguage.current = e.target.options[e.target.selectedIndex]
-              .value as Language)
-          }
-        >
-          <option value="en-US">en-US</option>
-          <option value="es-ES">es-ES</option>
-          <option value="ko-KR">ko-KR</option>
-          <option value="ru-RU">ru-RU</option>
-          <option value="zh-HK">zh-HK</option>
-          <option value="zh-CN">zh-CN</option>
-        </select>
-
-        <button
-          onClick={() => setIsTranslationActive(!isTranslationActive)}
-          className={`${
-            isTranslationActive ? "bg-red-900" : "bg-green-700"
-          } text-white font-bold py-2 px-4 rounded transition-colors duration-300`}
-        >
-          {isTranslationActive ? "Stop Translation" : "Start Translation"}
-        </button>
-      </div>
-
       <div>
-        <h3>Translated Audio</h3>
-        <audio ref={remoteAudio} autoPlay controls />
+        <audio ref={remoteAudio} autoPlay />
       </div>
     </div>
   );
