@@ -43,9 +43,11 @@ export default function Home() {
       // Handle video offers/answers
       if (type === "translation-text") {
         if (text) {
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = selectedLanguage;
-          speechSynthesis.speak(utterance);
+          // const utterance = new SpeechSynthesisUtterance(text);
+          // utterance.lang = selectedLanguage;
+          // speechSynthesis.speak(utterance);
+
+          console.log("[CLIENT] Translated text from", from, ":", text);
         }
       } else if (type === "offer" && from !== "translation-server") {
         console.log("📨 Received offer from peer:", from);
