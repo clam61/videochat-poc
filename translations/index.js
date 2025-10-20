@@ -88,10 +88,11 @@ const connectSignaling = () => {
       }
 
       if (type === "offer" && from) {
-        console.log("[signal] offer from", from, "lang:", languages.get(from));
+        // console.log("[signal] offer from", from, "lang:", languages.get(from));
         await handleOffer(from, sdp);
       } else if (type === "ice-candidate" && from && candidate) {
         const pc = pcs.get(from);
+
         if (pc) {
           try {
             await pc.addIceCandidate(candidate);
