@@ -38,10 +38,16 @@ export default function Home() {
 
     ws.current.onmessage = async (event) => {
       const data = JSON.parse(event.data);
-      const { type, from, sdp, candidate } = data;
+      const { type, from, sdp, candidate, text } = data;
 
       // Handle video offers/answers
-      if (type === "offer" && from !== "translation-server") {
+      if (type === "translation-text") {
+        if (text) {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = selectedLanguage;
+          speechSynthesis.speak(utterance);
+        }
+      } else if (type === "offer" && from !== "translation-server") {
         console.log("📨 Received offer from peer:", from);
         await pcVideo.current?.setRemoteDescription({ type: "offer", sdp });
         const answer = await pcVideo.current?.createAnswer();

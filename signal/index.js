@@ -30,7 +30,7 @@ wss.on("connection", (ws) => {
 
         case "join":
           peers.set(from, ws);
-          console.log(`Peer joined: ${from}`);
+          // console.log(`Peer joined: ${from}`);
           // If there is already another client, we create a pair.
           const otherPeers = Array.from(peers.keys()).filter((id) => id !== from);
           if (otherPeers.length > 0) {
@@ -59,6 +59,17 @@ wss.on("connection", (ws) => {
           if (!to) return;
           const targetCandidate = peers.get(to);
           if (targetCandidate) targetCandidate.send(JSON.stringify(data));
+          break;
+
+        case "translation-text":
+          if (!to) return;
+          const targetTranslation = peers.get(to);
+
+          if (targetTranslation) {
+            targetTranslation.send(JSON.stringify(data));
+            console.log(`[signal] Sent translation text to ${to}:`, data.text);
+          }
+
           break;
 
         default:

@@ -322,7 +322,6 @@ function feedAudioBufferToSource(audioSource, buffer) {
 }
 
 // Main pipeline: stream PCM -> AWS Transcribe Streaming -> Translate -> Polly -> push to client RTCAudioSource
-// Main pipeline: stream PCM -> AWS Transcribe Streaming -> Translate -> Polly -> push to client RTCAudioSource
 async function startAwsTranscribePipeline(pcmStream, clientId) {
   const language = languages.get(clientId) || "en-US";
   console.log(`[transcribe] start for ${clientId} lang=${language}`);
