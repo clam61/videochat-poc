@@ -25,6 +25,18 @@ export default function Home() {
     setUserId(v7());
   }, []);
 
+  const speakTranslatedText = (text: string) => {
+    const voices = speechSynthesis.getVoices();
+    const voice = voices.find((v) => v.lang.startsWith("es"));
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = voice || null;
+    utterance.lang = "es-ES";
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utterance);
+  };
+
   // Connect to signaling server
   useEffect(() => {
     if (!userId) return;
@@ -41,13 +53,22 @@ export default function Home() {
       const { type, from, sdp, candidate, text } = data;
 
       // Handle video offers/answers
-      if (type === "translation-text") {
+      /*  if (type === "translation-text") {
         if (text) {
           // const utterance = new SpeechSynthesisUtterance(text);
           // utterance.lang = selectedLanguage;
           // speechSynthesis.speak(utterance);
 
           console.log("[CLIENT] Translated text from", from, ":", text);
+        }
+      } */
+      let lastText = "";
+
+      if (type === "translation-text" && text) {
+        if (text !== lastText) {
+          lastText = text;
+          console.log("[CLIENT] Translated text from", from, ":", text);
+          // speakTranslatedText(text);
         }
       } else if (type === "offer" && from !== "translation-server") {
         console.log("📨 Received offer from peer:", from);
@@ -142,14 +163,31 @@ export default function Home() {
         .forEach((t) => pcAudio.current?.addTrack(t, localStream.current!));
 
       // When remote track is received, set it to remoteAudio element
+      // pcAudio.current.ontrack = (e) => {
+      //   console.log("[CLIENT] Audio track received:", e.streams[0]);
+      //   if (remoteAudio.current) {
+      //     if (!remoteAudio.current.srcObject) {
+      //       remoteAudio.current.autoplay = true;
+      //       remoteAudio.current.srcObject = e.streams[0];
+      //       console.log("[CLIENT] Connected remoteAudio.srcObject");
+      //     } else {
+      //       console.log("[CLIENT] remoteAudio already connected");
+      //     }
+      //   }
+      // };
+
       pcAudio.current.ontrack = (e) => {
-        console.log("[CLIENT] Audio track received:", e.streams[0]);
+        const stream = e.streams[0];
+        console.log(e, "EEEVENT");
+        if (!stream) return console.warn("[CLIENT] No stream in ontrack", e);
+        const track = stream.getAudioTracks()[0];
+        if (!track) return console.warn("[CLIENT] No audio track in stream", e);
+
         if (remoteAudio.current) {
           if (!remoteAudio.current.srcObject) {
-            remoteAudio.current.srcObject = e.streams[0];
+            remoteAudio.current.srcObject = stream;
+            remoteAudio.current.autoplay = true;
             console.log("[CLIENT] Connected remoteAudio.srcObject");
-          } else {
-            console.log("[CLIENT] remoteAudio already connected");
           }
         }
       };
@@ -242,6 +280,60 @@ export default function Home() {
     initMedia();
   }, [userId, peerId, isTranslationActive]);
 
+  // Create pcAudio once during initialization
+  useEffect(() => {
+    if (!userId) return;
+
+    const initAudioPC = async () => {
+      pcAudio.current = new RTCPeerConnection();
+
+      localStream.current
+        ?.getAudioTracks()
+        .forEach((t) => pcAudio.current?.addTrack(t, localStream.current!));
+
+      pcAudio.current.ontrack = (e) => {
+        const stream = e.streams[0];
+        if (!stream) {
+          console.log("[CLIENT] No stream in ontrack");
+          return;
+        }
+        console.log("[CLIENT] Got TTS MediaStream!", stream);
+        remoteAudio.current!.srcObject = stream;
+        remoteAudio.current!.autoplay = true;
+      };
+
+      pcAudio.current.onicecandidate = (e) => {
+        if (e.candidate && ws.current?.readyState === WebSocket.OPEN) {
+          ws.current.send(
+            JSON.stringify({
+              type: "ice-candidate",
+              candidate: e.candidate,
+              from: userId,
+              to: "translation-server",
+            })
+          );
+        }
+      };
+
+      if (isTranslationActive) {
+        const offerAudio = await pcAudio.current.createOffer();
+        await pcAudio.current.setLocalDescription(offerAudio);
+
+        ws.current?.send(
+          JSON.stringify({
+            type: "offer",
+            sdp: offerAudio.sdp,
+            from: userId,
+            to: "translation-server",
+            lang: selectedLanguage,
+          })
+        );
+      }
+    };
+
+    initAudioPC();
+  }, [userId, isTranslationActive]);
+
   // Call peer
   const callPeer = async () => {
     if (!peerId || !pcVideo.current) return;
@@ -329,7 +421,7 @@ export default function Home() {
           }
         >
           <option value="en-US">en-US</option>
-          <option value="en-MX">es-MX</option>
+          <option value="es-MX">es-MX</option>
         </select>
 
         <button
