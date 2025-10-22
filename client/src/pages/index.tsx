@@ -25,18 +25,6 @@ export default function Home() {
     setUserId(v7());
   }, []);
 
-  const speakTranslatedText = (text: string) => {
-    const voices = speechSynthesis.getVoices();
-    const voice = voices.find((v) => v.lang.startsWith("es"));
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = voice || null;
-    utterance.lang = "es-ES";
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utterance);
-  };
-
   // Connect to signaling server
   useEffect(() => {
     if (!userId) return;
@@ -162,29 +150,16 @@ export default function Home() {
         .getAudioTracks()
         .forEach((t) => pcAudio.current?.addTrack(t, localStream.current!));
 
-      // When remote track is received, set it to remoteAudio element
-      // pcAudio.current.ontrack = (e) => {
-      //   console.log("[CLIENT] Audio track received:", e.streams[0]);
-      //   if (remoteAudio.current) {
-      //     if (!remoteAudio.current.srcObject) {
-      //       remoteAudio.current.autoplay = true;
-      //       remoteAudio.current.srcObject = e.streams[0];
-      //       console.log("[CLIENT] Connected remoteAudio.srcObject");
-      //     } else {
-      //       console.log("[CLIENT] remoteAudio already connected");
-      //     }
-      //   }
-      // };
-
       pcAudio.current.ontrack = (e) => {
         const stream = e.streams[0];
-        console.log(e, "EEEVENT");
+        console.log(e, "EVENT");
         if (!stream) return console.warn("[CLIENT] No stream in ontrack", e);
         const track = stream.getAudioTracks()[0];
         if (!track) return console.warn("[CLIENT] No audio track in stream", e);
 
         if (remoteAudio.current) {
-          if (!remoteAudio.current.srcObject) {
+          console.log("remoteAudio.current", remoteAudio.current.srcObject);
+          if (remoteAudio.current.srcObject) {
             remoteAudio.current.srcObject = stream;
             remoteAudio.current.autoplay = true;
             console.log("[CLIENT] Connected remoteAudio.srcObject");

@@ -12,7 +12,7 @@ wss.on("connection", (ws) => {
   console.log("On connection");
   ws.on("message", (messageString) => {
     const msg = messageString.toString("utf8");
-    console.log("Received message as string", msg);
+    // console.log("Received message as string", msg);
 
     try {
       const data = JSON.parse(msg);
