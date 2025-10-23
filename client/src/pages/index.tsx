@@ -2,11 +2,13 @@
 import { useEffect, useRef, useState } from "react";
 import { v7 } from "uuid";
 
+type Translation = "not_active" | "active" | "stop_translation";
+
 export default function Home() {
   const [userId, setUserId] = useState<string>("");
   const [peerId, setPeerId] = useState<string>("");
   const [connected, setConnected] = useState(false);
-  const [isTranslationActive, setIsTranslationActive] = useState<boolean>(false);
+  const [translation, setTranslation] = useState<Translation>("not_active");
 
   type Language = "es-MX" | "en-US";
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("en-US");
@@ -213,7 +215,7 @@ export default function Home() {
       // };
 
       // Create audio offer only if translation is active
-      // if (isTranslationActive && pcAudio.current) {
+      // if (translation && pcAudio.current) {
       //   const offerAudio = await pcAudio.current.createOffer();
       //   await pcAudio.current.setLocalDescription(offerAudio);
 
@@ -234,7 +236,7 @@ export default function Home() {
       //   );
       // }
 
-      if (isTranslationActive && pcAudio.current) {
+      if (translation === "active" && pcAudio.current) {
         const offerAudio = await pcAudio.current.createOffer();
         await pcAudio.current.setLocalDescription(offerAudio);
 
@@ -253,7 +255,7 @@ export default function Home() {
     };
 
     initMedia();
-  }, [userId, peerId, isTranslationActive]);
+  }, [userId, peerId, translation]);
 
   // Create pcAudio once during initialization
   useEffect(() => {
@@ -290,7 +292,7 @@ export default function Home() {
         }
       };
 
-      if (isTranslationActive) {
+      if (translation === "active") {
         const offerAudio = await pcAudio.current.createOffer();
         await pcAudio.current.setLocalDescription(offerAudio);
 
@@ -304,10 +306,23 @@ export default function Home() {
           })
         );
       }
+
+      if (translation === "stop_translation") {
+        ws.current?.send(
+          JSON.stringify({
+            type: "stop_translation",
+            from: userId,
+            to: "translation-server",
+          })
+        );
+        localStream.current?.getAudioTracks().forEach((track) => track.stop());
+        pcAudio.current?.close();
+        pcAudio.current = null;
+      }
     };
 
     initAudioPC();
-  }, [userId, isTranslationActive]);
+  }, [userId, translation]);
 
   // Call peer
   const callPeer = async () => {
@@ -340,6 +355,20 @@ export default function Home() {
       })
     );
   }, [selectedLanguage]);
+
+  const handleTranslations = () => {
+    switch (translation) {
+      case "not_active":
+        setTranslation("active");
+        break;
+      case "active":
+        setTranslation("stop_translation");
+        break;
+      case "stop_translation":
+        setTranslation("active");
+        break;
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -397,15 +426,16 @@ export default function Home() {
         >
           <option value="en-US">en-US</option>
           <option value="es-MX">es-MX</option>
+          <option value="fr-FR">fr-FR</option>
         </select>
 
         <button
-          onClick={() => setIsTranslationActive(!isTranslationActive)}
+          onClick={handleTranslations}
           className={`${
-            isTranslationActive ? "bg-red-900" : "bg-green-700"
+            translation === "active" ? "bg-red-900" : "bg-green-700"
           } text-white font-bold py-2 px-4 rounded transition-colors duration-300`}
         >
-          {isTranslationActive ? "Stop Translation" : "Start Translation"}
+          {translation === "active" ? "Stop Translation" : "Start Translation"}
         </button>
       </div>
 

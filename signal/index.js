@@ -16,8 +16,9 @@ wss.on("connection", (ws) => {
 
     try {
       const data = JSON.parse(msg);
-      const { type, from, to, lang } = data;
+      const { type, from, to } = data;
 
+      console.log(type, "TYPE");
       switch (type) {
         // when receiving a join message, add the user to the peers map
         // case "join":
@@ -69,8 +70,20 @@ wss.on("connection", (ws) => {
             targetTranslation.send(JSON.stringify(data));
             console.log(`[signal] Sent translation text to ${to}:`, data.text);
           }
-
           break;
+
+        case "stop_translation": {
+          if (!to) {
+            const translationServer = peers.get("translation-server");
+            if (translationServer) {
+              translationServer.send(JSON.stringify(data));
+            }
+          } else {
+            const targetStop = peers.get(to);
+            if (targetStop) targetStop.send(JSON.stringify(data));
+          }
+          break;
+        }
 
         default:
           break;

@@ -451,6 +451,7 @@ const pollyClient = new PollyClient({
 const pcs = new Map();
 const sinks = new Map();
 const audioSources = new Map();
+const pcmStreams = new Map();
 const languages = new Map();
 
 let signaling = null;
@@ -471,10 +472,27 @@ const connectSignaling = () => {
 
       if (lang && from) languages.set(from, lang);
 
-      if (type === "offer" && from) await handleOffer(from, sdp);
-      else if (type === "ice-candidate" && from && candidate) {
-        const pc = pcs.get(from);
-        if (pc) await pc.addIceCandidate(candidate).catch(() => {});
+      // if (type === "offer" && from) await handleOffer(from, sdp);
+      // else if (type === "ice-candidate" && from && candidate) {
+      //   const pc = pcs.get(from);
+      //   if (pc) await pc.addIceCandidate(candidate).catch(() => {});
+      // }
+
+      switch (type) {
+        case "offer":
+          await handleOffer(from, sdp);
+          break;
+        case "ice-candidate":
+          if (from && candidate) {
+            const pc = pcs.get(from);
+            if (pc) await pc.addIceCandidate(candidate).catch(() => {});
+          }
+          break;
+
+        case "stop_translation":
+          console.log("stop-translation");
+          cleanupClient(from);
+          break;
       }
     } catch (err) {
       console.error("[signal] message parse error", err);
@@ -605,6 +623,48 @@ function simpleDownsampleInt16(input, inRate, outRate) {
   return out;
 }
 
+function cleanupClient(clientId) {
+  try {
+    const as = audioSources.get(clientId);
+    if (as) {
+      try {
+        as.ttsTrack.stop();
+      } catch (e) {}
+    }
+    audioSources.delete(clientId);
+
+    const s = sinks.get(clientId);
+    if (s) {
+      try {
+        s.stop();
+      } catch (e) {}
+    }
+    sinks.delete(clientId);
+
+    const pcm = pcmStreams.get(clientId);
+    if (pcm) {
+      try {
+        pcm.end();
+      } catch (e) {}
+    }
+    pcmStreams.delete(clientId);
+
+    const pc = pcs.get(clientId);
+    if (pc) {
+      try {
+        pc.close();
+      } catch (e) {}
+    }
+    pcs.delete(clientId);
+
+    languages.delete(clientId);
+
+    console.log("[translation-server] cleaned up client:", clientId);
+  } catch (e) {
+    console.error("[translation-server] error during cleanupClient:", e);
+  }
+}
+
 // --- Feed audio to RTCAudioSource ---
 function feedAudioBufferToSource(audioSource, buffer) {
   const BYTES_PER_FRAME = 160 * 2;
@@ -654,7 +714,9 @@ async function startAwsTranscribePipeline(pcmStream, clientId) {
     if (!txt || txt.trim() === "") return;
     try {
       const src = language.split("-")[0],
-        tgt = src === "en" ? "es" : "en";
+        tgt = language.split("-")[0];
+
+      console.log(language.split("-")[0], "LANG");
       const tr = await translateClient.send(
         new TranslateTextCommand({ Text: txt, SourceLanguageCode: src, TargetLanguageCode: tgt })
       );
