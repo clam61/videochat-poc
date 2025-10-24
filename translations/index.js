@@ -453,6 +453,7 @@ const sinks = new Map();
 const audioSources = new Map();
 const pcmStreams = new Map();
 const languages = new Map();
+const ttsTracks = new Map();
 
 let signaling = null;
 
@@ -490,7 +491,7 @@ const connectSignaling = () => {
           break;
 
         case "stop_translation":
-          console.log("stop-translation");
+          console.log("stop-translation", from);
           cleanupClient(from);
           break;
       }
@@ -520,6 +521,9 @@ async function handleOffer(clientId, offerSdp) {
   const audioSource = new RTCAudioSource();
   audioSources.set(clientId, audioSource);
   const ttsTrack = audioSource.createTrack();
+
+  ttsTracks.set(clientId, ttsTrack);
+
   const ttsStream = new avahqWrtc.MediaStream();
   ttsStream.addTrack(ttsTrack);
   pc.addTrack(ttsTrack, ttsStream);
@@ -562,6 +566,7 @@ async function handleOffer(clientId, offerSdp) {
     const sink = new RTCAudioSink(track);
     sinks.set(clientId, sink);
     const pcmStream = new PassThrough();
+    pcmStreams.set(clientId, pcmStream);
 
     sink.ondata = (d) => {
       let int16Buffer;
@@ -625,38 +630,53 @@ function simpleDownsampleInt16(input, inRate, outRate) {
 
 function cleanupClient(clientId) {
   try {
-    const as = audioSources.get(clientId);
-    if (as) {
+    // stop and remove ttsTrack
+    const tts = ttsTracks.get(clientId);
+    if (tts) {
       try {
-        as.ttsTrack.stop();
+        tts.stop();
       } catch (e) {}
+      ttsTracks.delete(clientId);
     }
-    audioSources.delete(clientId);
 
+    // stop audio sink (RTCAudioSink)
     const s = sinks.get(clientId);
     if (s) {
       try {
         s.stop();
       } catch (e) {}
+      sinks.delete(clientId);
     }
-    sinks.delete(clientId);
 
+    // end PCM stream so StartStreamTranscriptionCommand's generator finishes
     const pcm = pcmStreams.get(clientId);
     if (pcm) {
       try {
         pcm.end();
       } catch (e) {}
+      pcmStreams.delete(clientId);
     }
-    pcmStreams.delete(clientId);
 
+    // stop/remove audioSource (RTCAudioSource)
+    const as = audioSources.get(clientId);
+    if (as) {
+      try {
+        // RTCAudioSource doesn't have a standardized stop, but if there are
+        // any resources to free you can attempt to null them — we delete reference
+      } catch (e) {}
+      audioSources.delete(clientId);
+    }
+
+    // close peer connection
     const pc = pcs.get(clientId);
     if (pc) {
       try {
         pc.close();
       } catch (e) {}
+      pcs.delete(clientId);
     }
-    pcs.delete(clientId);
 
+    // remove language mapping
     languages.delete(clientId);
 
     console.log("[translation-server] cleaned up client:", clientId);
@@ -664,6 +684,48 @@ function cleanupClient(clientId) {
     console.error("[translation-server] error during cleanupClient:", e);
   }
 }
+
+// function cleanupClient(clientId) {
+//   try {
+//     const as = audioSources.get(clientId);
+//     if (as) {
+//       try {
+//         as.ttsTrack.stop();
+//       } catch (e) {}
+//     }
+//     audioSources.delete(clientId);
+
+//     const s = sinks.get(clientId);
+//     if (s) {
+//       try {
+//         s.stop();
+//       } catch (e) {}
+//     }
+//     sinks.delete(clientId);
+
+//     const pcm = pcmStreams.get(clientId);
+//     if (pcm) {
+//       try {
+//         pcm.end();
+//       } catch (e) {}
+//     }
+//     pcmStreams.delete(clientId);
+
+//     const pc = pcs.get(clientId);
+//     if (pc) {
+//       try {
+//         pc.close();
+//       } catch (e) {}
+//     }
+//     pcs.delete(clientId);
+
+//     languages.delete(clientId);
+
+//     console.log("[translation-server] cleaned up client:", clientId);
+//   } catch (e) {
+//     console.error("[translation-server] error during cleanupClient:", e);
+//   }
+// }
 
 // --- Feed audio to RTCAudioSource ---
 function feedAudioBufferToSource(audioSource, buffer) {
@@ -716,7 +778,6 @@ async function startAwsTranscribePipeline(pcmStream, clientId) {
       const src = language.split("-")[0],
         tgt = language.split("-")[0];
 
-      console.log(language.split("-")[0], "LANG");
       const tr = await translateClient.send(
         new TranslateTextCommand({ Text: txt, SourceLanguageCode: src, TargetLanguageCode: tgt })
       );
