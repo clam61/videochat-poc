@@ -547,7 +547,10 @@ const connectSignaling = () => {
                         voiceId = "Tatyana";
                       } else if (targetLanguage === "ko-KR") {
                         voiceId = "Seoyeon";
-                      } else {
+                      } else if (targetLanguage === "pt-BR") {
+                        voiceId = "Camila";
+                      }
+                      else {
                         voiceId = "Joanna";
                       }
 
