@@ -1,4 +1,4 @@
-export type Language = "en-US" | "es-US" | "ko-KR" | "ru-RU" | "zh-HK" | "zh-CN";
+export type Language = "en-US" | "es-US" | "pt-BR" | "ko-KR" | "ru-RU" | "zh-HK" | "zh-CN";
 
 export type Role = "owner" | "attendee";
 

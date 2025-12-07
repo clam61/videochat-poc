@@ -6,6 +6,7 @@ import { Language, Meeting } from "../../types/meeting";
 const LANGUAGES: { value: Language; label: string }[] = [
   { value: "en-US", label: "English (US)" },
   { value: "es-US", label: "Spanish (US)" },
+  { value: "pt-BR", label: "Portuguese (Brazil)" },
   { value: "ko-KR", label: "Korean" },
   { value: "ru-RU", label: "Russian" },
   { value: "zh-HK", label: "Chinese (Hong Kong)" },
