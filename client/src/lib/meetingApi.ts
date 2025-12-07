@@ -1,81 +1,53 @@
 import { Meeting, Language } from "../types/meeting";
 
-// In-memory store for stub meetings
-// In a real implementation, this would be replaced with database calls
-const meetings = new Map<string, Meeting>();
-
-// Pre-populate with a test meeting
-meetings.set("test-meeting", {
-  id: "test-meeting",
-  owner: {
-    odoo_id: "user-001",
-    peer_id: "",
-    language: "en-US",
-    role: "owner",
-  },
-  attendee: {
-    odoo_id: "user-002",
-    peer_id: "",
-    language: "es-US",
-    role: "attendee",
-  },
-  created_at: new Date().toISOString(),
-});
-
 /**
  * Get a meeting by ID
- * Future: Replace with API call to backend
+ * Calls the API which reads from the JSON file database
  */
 export async function getMeeting(id: string): Promise<Meeting | null> {
-  return meetings.get(id) || null;
+  try {
+    const response = await fetch(`/api/meetings/${id}`);
+    if (!response.ok) {
+      if (response.status === 404) return null;
+      throw new Error("Failed to fetch meeting");
+    }
+    return response.json();
+  } catch (error) {
+    console.error("Error fetching meeting:", error);
+    return null;
+  }
 }
 
 /**
  * Create a new meeting
- * Future: Replace with API call to backend
+ * Calls the API which writes to the JSON file database
  */
 export async function createMeeting(
   ownerLanguage: Language,
   attendeeLanguage: Language
 ): Promise<Meeting> {
-  const id = generateMeetingId();
-
-  const meeting: Meeting = {
-    id,
-    owner: {
-      odoo_id: "",
-      peer_id: "",
-      language: ownerLanguage,
-      role: "owner",
+  const response = await fetch("/api/meetings", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
     },
-    attendee: {
-      odoo_id: "",
-      peer_id: "",
-      language: attendeeLanguage,
-      role: "attendee",
-    },
-    created_at: new Date().toISOString(),
-  };
+    body: JSON.stringify({ ownerLanguage, attendeeLanguage }),
+  });
 
-  meetings.set(id, meeting);
-  return meeting;
-}
-
-/**
- * Generate a random meeting ID (6 characters)
- */
-function generateMeetingId(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  if (!response.ok) {
+    throw new Error("Failed to create meeting");
   }
-  return result;
+
+  return response.json();
 }
 
 /**
- * List all meetings (for debugging)
+ * List all meetings
  */
-export function listMeetings(): Meeting[] {
-  return Array.from(meetings.values());
+export async function listMeetings(): Promise<Meeting[]> {
+  const response = await fetch("/api/meetings");
+  if (!response.ok) {
+    throw new Error("Failed to list meetings");
+  }
+  return response.json();
 }
