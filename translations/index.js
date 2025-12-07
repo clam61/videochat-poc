@@ -496,7 +496,15 @@ const connectSignaling = () => {
           //   transcribeStream.sendAudioEvent({ AudioChunk: silence });
           // }
           while (true) {
-            console.log(from, "Transcribe loop begin....");
+            console.log(from, new Date(), "Transcribe loop begin....");
+
+            if (!connections.has(from)) {
+              console.log(
+                `No connection,${from}, exiting out of startAwsTranscribe process`
+              );
+              return;
+            }
+
             try {
               const response = await transcribeClient.send(command);
               for await (const event of response.TranscriptResultStream) {
@@ -617,7 +625,11 @@ const connectSignaling = () => {
                 }
               }
             } catch (err) {
-              console.error(from, "Transcribe error:", err);
+              console.error(from, new Date(), "Transcribe error:", err);
+
+              // sleep for 2 seconds. there seems to be an issue with timeout errors
+              // if you get one.
+              await new Promise((r) => setTimeout(r, 2000));
             }
           }
         };

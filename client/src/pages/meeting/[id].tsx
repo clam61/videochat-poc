@@ -12,6 +12,8 @@ export default function MeetingRoom() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("Loading...");
   const [peerId, setPeerId] = useState<string>("");
+  const [translateEnabled, setTranslateEnabled] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
 
   const ws = useRef<WebSocket | null>(null);
   const pcChat = useRef<RTCPeerConnection | null>(null);
@@ -23,6 +25,9 @@ export default function MeetingRoom() {
   const localVideo = useRef<HTMLVideoElement | null>(null);
   const remoteVideo = useRef<HTMLVideoElement | null>(null);
   const remoteAudio = useRef<HTMLAudioElement | null>(null);
+  const directAudio = useRef<HTMLAudioElement | null>(null);
+  const translatedAudioStream = useRef<MediaStream | null>(null);
+  const directAudioStream = useRef<MediaStream | null>(null);
   const hasStartedCall = useRef(false);
 
   // Generate a random 3-letter peer ID
@@ -84,16 +89,32 @@ export default function MeetingRoom() {
         localVideo.current.srcObject = localStream.current;
       }
 
-      // --- Video PeerConnection ---
+      // --- Video + Direct Audio PeerConnection ---
       pcChat.current = new RTCPeerConnection();
 
+      // Add video tracks
       localStream.current
         .getVideoTracks()
         .forEach((t) => pcChat.current?.addTrack(t, localStream.current!));
 
+      // Add audio tracks (disabled by default - used when translate is OFF)
+      localStream.current.getAudioTracks().forEach((t) => {
+        const audioTrack = t.clone();
+        audioTrack.enabled = false; // Disabled when translate is ON
+        pcChat.current?.addTrack(audioTrack, localStream.current!);
+      });
+
       pcChat.current.ontrack = (e) => {
-        if (remoteVideo.current) {
-          remoteVideo.current.srcObject = e.streams[0];
+        if (e.track.kind === "video") {
+          if (remoteVideo.current) {
+            remoteVideo.current.srcObject = e.streams[0];
+          }
+        } else if (e.track.kind === "audio") {
+          // Store direct audio stream for when translate is OFF
+          directAudioStream.current = e.streams[0];
+          if (directAudio.current) {
+            directAudio.current.srcObject = e.streams[0];
+          }
         }
       };
 
@@ -120,6 +141,8 @@ export default function MeetingRoom() {
       });
 
       translationConnection.current.ontrack = (e) => {
+        // Store translated audio stream
+        translatedAudioStream.current = e.streams[0];
         if (remoteAudio.current) {
           remoteAudio.current.srcObject = e.streams[0];
         }
@@ -209,6 +232,7 @@ export default function MeetingRoom() {
         }
 
         setStatus("Connected!");
+        setIsConnected(true);
       } else if (type === "answer") {
         if (from === "translation-server") {
           await translationConnection.current?.setRemoteDescription({
@@ -218,6 +242,7 @@ export default function MeetingRoom() {
         } else {
           await pcChat.current?.setRemoteDescription({ type: "answer", sdp });
           setStatus("Connected!");
+          setIsConnected(true);
         }
       } else if (type === "ice-candidate") {
         if (from === "translation-server") {
@@ -274,6 +299,55 @@ export default function MeetingRoom() {
     };
   }, [meeting, role]);
 
+  // Toggle between translated and direct audio
+  useEffect(() => {
+    if (!isConnected) return;
+
+    if (translateEnabled) {
+      // Enable translation: use translated audio, disable direct P2P audio
+      if (remoteAudio.current && translatedAudioStream.current) {
+        remoteAudio.current.srcObject = translatedAudioStream.current;
+        remoteAudio.current.muted = false;
+      }
+      if (directAudio.current) {
+        directAudio.current.muted = true;
+      }
+      // Disable outgoing direct audio on pcChat
+      pcChat.current?.getSenders().forEach((sender) => {
+        if (sender.track?.kind === "audio") {
+          sender.track.enabled = false;
+        }
+      });
+      // Enable outgoing audio to translation server
+      translationConnection.current?.getSenders().forEach((sender) => {
+        if (sender.track?.kind === "audio") {
+          sender.track.enabled = true;
+        }
+      });
+    } else {
+      // Disable translation: use direct P2P audio
+      if (remoteAudio.current) {
+        remoteAudio.current.muted = true;
+      }
+      if (directAudio.current && directAudioStream.current) {
+        directAudio.current.srcObject = directAudioStream.current;
+        directAudio.current.muted = false;
+      }
+      // Enable outgoing direct audio on pcChat
+      pcChat.current?.getSenders().forEach((sender) => {
+        if (sender.track?.kind === "audio") {
+          sender.track.enabled = true;
+        }
+      });
+      // Disable outgoing audio to translation server
+      translationConnection.current?.getSenders().forEach((sender) => {
+        if (sender.track?.kind === "audio") {
+          sender.track.enabled = false;
+        }
+      });
+    }
+  }, [translateEnabled, isConnected]);
+
   if (error) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -303,7 +377,18 @@ export default function MeetingRoom() {
                 My ID: <code className="bg-gray-100 px-1">{peerId}</code>
               </p>
             </div>
-            <div className="text-right">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setTranslateEnabled(!translateEnabled)}
+                disabled={!isConnected}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  translateEnabled
+                    ? "bg-blue-600 text-white hover:bg-blue-700"
+                    : "bg-gray-300 text-gray-700 hover:bg-gray-400"
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                Translate: {translateEnabled ? "ON" : "OFF"}
+              </button>
               <span
                 className={`inline-block px-2 py-1 rounded text-sm ${
                   status.includes("Connected!")
@@ -341,7 +426,10 @@ export default function MeetingRoom() {
           </div>
         </div>
 
+        {/* Translated audio (from translation server) */}
         <audio ref={remoteAudio} autoPlay />
+        {/* Direct audio (P2P, when translate is OFF) */}
+        <audio ref={directAudio} autoPlay muted />
       </div>
     </div>
   );
