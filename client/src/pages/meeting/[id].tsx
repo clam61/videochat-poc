@@ -170,9 +170,14 @@ export default function MeetingRoom() {
     );
 
     ws.current.onopen = async () => {
+      setStatus("Initializing media...");
+
+      // Initialize media FIRST so pcChat is ready when peer-ready arrives
+      await initMedia();
+
       setStatus("Connected to signaling server. Waiting for peer...");
 
-      // Join with meeting context
+      // Join with meeting context AFTER media is initialized
       ws.current?.send(
         JSON.stringify({
           type: "join",
@@ -182,8 +187,6 @@ export default function MeetingRoom() {
           lang: myLanguage.current,
         })
       );
-
-      await initMedia();
     };
 
     ws.current.onclose = () => {
