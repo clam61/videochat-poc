@@ -214,6 +214,15 @@ export default function MeetingRoom() {
       // Handle video offers/answers
       if (type === "offer" && from !== "translation-server") {
         remotePeerId.current = from;
+
+        // Attendee starts translation connection BEFORE sending P2P answer
+        // This ensures translation-server has both peer connections ready
+        // before the "pairing" message arrives (triggered by P2P answer)
+        if (!hasStartedCall.current) {
+          hasStartedCall.current = true;
+          await startTranslationConnection(myPeerId);
+        }
+
         await pcChat.current?.setRemoteDescription({ type: "offer", sdp });
         const answer = await pcChat.current?.createAnswer();
         await pcChat.current?.setLocalDescription(answer!);
@@ -227,12 +236,6 @@ export default function MeetingRoom() {
             lang: myLanguage.current,
           })
         );
-
-        // Attendee also starts their translation connection after receiving offer
-        if (!hasStartedCall.current) {
-          hasStartedCall.current = true;
-          await startTranslationConnection(myPeerId);
-        }
 
         setStatus("Connected!");
         setIsConnected(true);
